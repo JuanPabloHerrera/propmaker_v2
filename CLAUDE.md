@@ -12,11 +12,20 @@ AI meeting intelligence and proposal generator. Joins video meetings via Recall.
 
 ## Setup
 
-1. Fill in `.env.local` with your credentials
-2. Run the Supabase migration: `supabase/migrations/001_initial.sql`
-3. Enable Supabase Realtime on `transcript_segments` and `suggestions` tables
+1. Copy `.env.example` to `.env.local` and fill in credentials
+2. Apply all migrations in `supabase/migrations/` in order
+3. Enable Supabase Realtime on `transcript_segments`, `suggestions`, `meetings`, `live_meeting_chat` (handled by `002_enable_realtime.sql`)
 4. For local development, use ngrok to expose port 3000 for Recall.ai webhooks
 5. Set `NEXT_PUBLIC_APP_URL` to your ngrok URL when testing webhooks
+
+## Deployment (Vercel)
+
+Production hosting: Vercel, auto-deploy from `main`.
+
+- Env vars live in Vercel project settings → Environment Variables. `.env.example` lists every required name.
+- `NEXT_PUBLIC_APP_URL` **must** equal the public Vercel URL (or custom domain). Recall.ai webhook URLs are built from this value at bot-creation time in `lib/recall.ts:53` — if it's wrong, webhooks land somewhere else and transcripts never save.
+- Supabase migrations are **not** applied automatically. Run each new migration via Supabase dashboard → SQL Editor (or `supabase db push` via the CLI) against the production project before deploying code that depends on it.
+- Supabase Auth → URL Configuration must include the Vercel URL as the Site URL and in the redirect allow-list, or the auth callback (`app/(auth)/auth/callback/route.ts`) will reject magic links.
 
 ## Run dev server
 ```
