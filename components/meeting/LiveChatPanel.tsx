@@ -24,6 +24,27 @@ export function LiveChatPanel({ meetingId }: Props) {
   const [streamingText, setStreamingText] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  // Load persisted live chat history on mount
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase
+        .from('live_meeting_chat')
+        .select('id, role, content')
+        .eq('meeting_id', meetingId)
+        .order('created_at', { ascending: true })
+      if (cancelled || !data) return
+      setMessages(
+        data.map((m) => ({
+          id: m.id as string,
+          role: m.role as 'user' | 'assistant',
+          content: m.content as string,
+        }))
+      )
+    })()
+    return () => { cancelled = true }
+  }, [meetingId, supabase])
+
   // Subscribe to suggestions table and add them as proactive assistant messages
   useEffect(() => {
     const channel = supabase

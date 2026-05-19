@@ -40,6 +40,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const chatHistory = (existingChat ?? []) as Array<{ role: 'user' | 'assistant'; content: string }>
 
+  // Fetch in-meeting co-pilot conversation
+  const { data: liveChat } = await supabase
+    .from('live_meeting_chat')
+    .select('role, content')
+    .eq('meeting_id', id)
+    .order('created_at', { ascending: true })
+
+  const liveChatHistory = (liveChat ?? []) as Array<{ role: 'user' | 'assistant'; content: string }>
+
   // Save user's new message if provided
   if (userMessage) {
     await supabase.from('post_meeting_chat').insert({
@@ -68,7 +77,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   // Stream Claude's response
-  const stream = streamPostMeetingChat(transcript, chatHistory)
+  const stream = streamPostMeetingChat(transcript, chatHistory, liveChatHistory)
 
   let fullText = ''
   const encoder = new TextEncoder()
@@ -96,7 +105,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         const proposalMarkdown = await generateProposal(
           transcript,
           cleanedHistory,
-          meeting.meeting_type as MeetingType
+          meeting.meeting_type as MeetingType,
+          liveChatHistory
         )
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ proposal: proposalMarkdown })}\n\n`)

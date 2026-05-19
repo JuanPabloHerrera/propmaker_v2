@@ -35,16 +35,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     { role: 'user', content: userMessage },
   ]
 
+  await supabase.from('live_meeting_chat').insert({
+    meeting_id: id,
+    role: 'user',
+    content: userMessage,
+  })
+
   const stream = streamLiveChat(transcript, history, meeting.meeting_type as MeetingType)
 
   const encoder = new TextEncoder()
+  let fullText = ''
   const readableStream = new ReadableStream({
     async start(controller) {
       for await (const chunk of stream) {
         if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+          fullText += chunk.delta.text
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`))
         }
       }
+      await supabase.from('live_meeting_chat').insert({
+        meeting_id: id,
+        role: 'assistant',
+        content: fullText,
+      })
       controller.enqueue(encoder.encode('data: [DONE]\n\n'))
       controller.close()
     },
