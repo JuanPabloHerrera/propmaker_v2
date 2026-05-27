@@ -4,7 +4,11 @@ import { useEffect, useCallback } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
-import type { TiptapDocument } from '@/types'
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableHeader } from '@tiptap/extension-table-header'
+import { TableCell } from '@tiptap/extension-table-cell'
+import type { TiptapDocument, TiptapNode } from '@/types'
 import type { OutlineSection } from './OutlineSidebar'
 
 interface Props {
@@ -15,19 +19,185 @@ interface Props {
   readOnly?: boolean
 }
 
-function markdownToTiptapHTML(markdown: string): string {
-  return markdown
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/^\* (.+)$/gm, '<li>$1</li>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function inlineMarkdownToHTML(s: string): string {
+  return escapeHtml(s)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/(<li>.*<\/li>\n?)+/g, (match) => `<ul>${match}</ul>`)
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/^(?!<[h|u|l])(.+)$/gm, '<p>$1</p>')
-    .replace(/<p><\/p>/g, '')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+}
+
+function splitRow(row: string): string[] {
+  const trimmed = row.trim().replace(/^\|/, '').replace(/\|$/, '')
+  return trimmed.split('|').map((c) => c.trim())
+}
+
+function isTableSeparator(line: string): boolean {
+  const cells = splitRow(line)
+  if (cells.length === 0) return false
+  return cells.every((c) => /^:?-{3,}:?$/.test(c))
+}
+
+function markdownToTiptapHTML(markdown: string): string {
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n')
+  const out: string[] = []
+  let listOpen = false
+  const closeList = () => {
+    if (listOpen) {
+      out.push('</ul>')
+      listOpen = false
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\s+$/, '')
+
+    // GitHub-style pipe table.
+    if (line.includes('|') && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      closeList()
+      const headerCells = splitRow(line)
+      i += 1 // skip separator
+      const headerHtml = headerCells.map((c) => `<th>${inlineMarkdownToHTML(c)}</th>`).join('')
+      const bodyHtml: string[] = []
+      while (i + 1 < lines.length) {
+        const peek = lines[i + 1]
+        if (!peek.trim() || !peek.includes('|')) break
+        const cells = splitRow(peek)
+        while (cells.length < headerCells.length) cells.push('')
+        bodyHtml.push(
+          `<tr>${cells
+            .slice(0, headerCells.length)
+            .map((c) => `<td>${inlineMarkdownToHTML(c)}</td>`)
+            .join('')}</tr>`,
+        )
+        i += 1
+      }
+      out.push(`<table><tbody><tr>${headerHtml}</tr>${bodyHtml.join('')}</tbody></table>`)
+      continue
+    }
+
+    if (!line.trim()) {
+      closeList()
+      continue
+    }
+
+    const heading = line.match(/^(#{1,3})\s+(.+)$/)
+    if (heading) {
+      closeList()
+      const level = heading[1].length
+      out.push(`<h${level}>${inlineMarkdownToHTML(heading[2])}</h${level}>`)
+      continue
+    }
+
+    const bullet = line.match(/^[\s]*[-*]\s+(.+)$/)
+    if (bullet) {
+      if (!listOpen) {
+        out.push('<ul>')
+        listOpen = true
+      }
+      out.push(`<li>${inlineMarkdownToHTML(bullet[1])}</li>`)
+      continue
+    }
+
+    if (line.match(/^-{3,}$/)) {
+      closeList()
+      out.push('<hr />')
+      continue
+    }
+
+    closeList()
+    out.push(`<p>${inlineMarkdownToHTML(line)}</p>`)
+  }
+  closeList()
+  return out.join('')
+}
+
+// ProseMirror rejects `{ type: 'text', text: '' }` — build a paragraph that
+// holds the cell text, or no content at all when the cell is empty.
+function cellParagraph(text: string): TiptapNode {
+  return text.length > 0
+    ? { type: 'paragraph', content: [{ type: 'text', text }] }
+    : { type: 'paragraph' }
+}
+
+// Older proposals were saved before table parsing existed — their content_json
+// has plain paragraphs whose text starts with "|". Rebuild them as table nodes
+// on load so the doc renders as a real table without needing regeneration.
+function upgradeLegacyTables(doc: TiptapDocument): TiptapDocument {
+  const paragraphText = (n: TiptapNode): string | null => {
+    if (n.type !== 'paragraph' || !n.content) return null
+    return n.content.map((c) => c.text ?? '').join('')
+  }
+  const looksLikeRow = (s: string | null) => !!s && s.trim().startsWith('|') && s.includes('|', 1)
+  const looksLikeSep = (s: string | null) =>
+    !!s && /^\|?\s*:?-{3,}:?(?:\s*\|\s*:?-{3,}:?)+\s*\|?\s*$/.test(s.trim())
+
+  const next: TiptapNode[] = []
+  const nodes = doc.content
+  for (let i = 0; i < nodes.length; i++) {
+    const headerText = paragraphText(nodes[i])
+    const sepText = i + 1 < nodes.length ? paragraphText(nodes[i + 1]) : null
+    if (looksLikeRow(headerText) && looksLikeSep(sepText)) {
+      const headerCells = splitRow(headerText as string)
+      i += 1 // skip separator paragraph
+      const rows: string[][] = []
+      while (i + 1 < nodes.length) {
+        const rowText = paragraphText(nodes[i + 1])
+        if (!looksLikeRow(rowText)) break
+        const cells = splitRow(rowText as string)
+        while (cells.length < headerCells.length) cells.push('')
+        rows.push(cells.slice(0, headerCells.length))
+        i += 1
+      }
+      next.push({
+        type: 'table',
+        content: [
+          {
+            type: 'tableRow',
+            content: headerCells.map((c) => ({
+              type: 'tableHeader',
+              content: [cellParagraph(c)],
+            })),
+          },
+          ...rows.map<TiptapNode>((cells) => ({
+            type: 'tableRow',
+            content: cells.map((c) => ({
+              type: 'tableCell',
+              content: [cellParagraph(c)],
+            })),
+          })),
+        ],
+      })
+      continue
+    }
+    next.push(nodes[i])
+  }
+  return sanitizeDoc({ type: 'doc', content: next })
+}
+
+// Strip empty text nodes anywhere in the tree — ProseMirror throws on them.
+// Stored proposals from earlier versions may already contain `{type:'text',text:''}`.
+function sanitizeDoc(doc: TiptapDocument): TiptapDocument {
+  const visit = (n: TiptapNode): TiptapNode | null => {
+    if (n.type === 'text') {
+      return n.text && n.text.length > 0 ? n : null
+    }
+    if (n.content) {
+      const cleaned = n.content.map(visit).filter((c): c is TiptapNode => c !== null)
+      return { ...n, content: cleaned }
+    }
+    return n
+  }
+  return {
+    type: 'doc',
+    content: doc.content.map(visit).filter((c): c is TiptapNode => c !== null),
+  }
 }
 
 function slugify(s: string): string {
@@ -62,9 +232,15 @@ export function ProposalEditor({
         placeholder: 'Proposal will appear here once the Q&A is complete…',
         emptyEditorClass: 'is-editor-empty',
       }),
+      Table.configure({ resizable: !readOnly }),
+      TableRow,
+      TableHeader,
+      TableCell,
     ],
     editable: !readOnly,
-    content: initialJson ?? (initialContent ? markdownToTiptapHTML(initialContent) : ''),
+    content:
+      (initialJson ? upgradeLegacyTables(initialJson) : null) ??
+      (initialContent ? markdownToTiptapHTML(initialContent) : ''),
     editorProps: {
       attributes: {
         class: 'doc focus:outline-none min-h-full',
@@ -97,7 +273,7 @@ export function ProposalEditor({
   useEffect(() => {
     if (!editor) return
     if (initialJson) {
-      editor.commands.setContent(initialJson as never)
+      editor.commands.setContent(upgradeLegacyTables(initialJson) as never)
       onSectionsChange?.(extractSections(editor))
     } else if (initialContent) {
       editor.commands.setContent(markdownToTiptapHTML(initialContent))
