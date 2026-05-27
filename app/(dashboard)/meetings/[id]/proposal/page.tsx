@@ -9,6 +9,7 @@ import { ProposalToolbar } from '@/components/proposal/ProposalToolbar'
 import { ProposalEditor } from '@/components/proposal/ProposalEditor'
 import { SignatureBlock } from '@/components/proposal/SignatureBlock'
 import { RefineDrawer } from '@/components/proposal/RefineDrawer'
+import { Skeleton } from '@/components/ui/skeleton'
 import { brandStyleBlock } from '@/lib/brand'
 import type { Meeting, Proposal, UserProfile } from '@/types'
 
@@ -127,11 +128,7 @@ export default function ProposalPage() {
   }
 
   if (!meeting) {
-    return (
-      <div className="flex-1 flex items-center justify-center lg-shell">
-        <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>Loading…</p>
-      </div>
-    )
+    return <ProposalPageSkeleton />
   }
 
   const docTitle = meeting.client_company
@@ -199,6 +196,53 @@ export default function ProposalPage() {
         meetingId={id}
         onApplied={fetchData}
       />
+    </div>
+  )
+}
+
+function ProposalPageSkeleton() {
+  return (
+    <div className="flex h-screen lg-shell">
+      <div
+        className="shrink-0 hidden md:block"
+        style={{
+          width: 240,
+          padding: '24px 16px',
+          borderRight: '0.5px solid var(--line-1)',
+        }}
+        aria-hidden="true"
+      >
+        <Skeleton style={{ height: 12, width: 80, marginBottom: 16 }} />
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton
+            key={i}
+            style={{ height: 10, width: `${50 + Math.random() * 40}%`, marginBottom: 12 }}
+          />
+        ))}
+      </div>
+      <div className="flex-1 min-w-0 flex flex-col">
+        <div
+          className="flex items-center gap-3"
+          style={{ padding: '12px 18px', borderBottom: '0.5px solid var(--line-1)' }}
+        >
+          <Skeleton style={{ height: 14, width: 180 }} />
+          <div className="flex-1" />
+          <Skeleton style={{ height: 28, width: 90, borderRadius: 7 }} />
+          <Skeleton style={{ height: 28, width: 90, borderRadius: 7 }} />
+        </div>
+        <div className="flex-1 min-h-0 overflow-hidden" style={{ padding: '32px 0' }}>
+          <div className="proposal-paper">
+            <Skeleton style={{ height: 24, width: '60%', marginBottom: 18 }} />
+            <Skeleton style={{ height: 14, width: '100%', marginBottom: 10 }} />
+            <Skeleton style={{ height: 14, width: '92%', marginBottom: 10 }} />
+            <Skeleton style={{ height: 14, width: '88%', marginBottom: 24 }} />
+            <Skeleton style={{ height: 18, width: '40%', marginBottom: 14 }} />
+            <Skeleton style={{ height: 14, width: '100%', marginBottom: 10 }} />
+            <Skeleton style={{ height: 14, width: '95%', marginBottom: 10 }} />
+            <Skeleton style={{ height: 14, width: '70%' }} />
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

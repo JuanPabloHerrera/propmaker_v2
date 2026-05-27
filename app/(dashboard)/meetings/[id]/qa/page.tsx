@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { QAToolbar } from '@/components/qa/QAToolbar'
 import { SingleQuestionView } from '@/components/qa/SingleQuestionView'
 import { DetectedProductsCard } from '@/components/qa/DetectedProductsCard'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Icon } from '@/components/ui/icon'
 import type { Meeting } from '@/types'
 
@@ -133,10 +134,28 @@ export default function QAPage() {
 
   if (!meeting) {
     return (
-      <div className="flex-1 flex items-center justify-center lg-shell">
-        <p className="text-sm" style={{ color: 'var(--ink-3)' }}>
-          Loading…
-        </p>
+      <div
+        className="flex-1 flex flex-col lg-shell"
+        role="status"
+        aria-live="polite"
+      >
+        <div
+          className="flex items-center gap-3"
+          style={{ padding: '14px 24px', borderBottom: '0.5px solid var(--line-1)' }}
+        >
+          <Skeleton style={{ height: 14, width: 220 }} />
+          <div className="flex-1" />
+          <Skeleton style={{ height: 24, width: 80, borderRadius: 6 }} />
+        </div>
+        <div
+          className="flex-1 flex flex-col items-center justify-center"
+          style={{ padding: '32px 22%', gap: 14 }}
+        >
+          <Skeleton style={{ height: 22, width: '70%' }} />
+          <Skeleton style={{ height: 14, width: '60%' }} />
+          <Skeleton style={{ height: 14, width: '50%' }} />
+          <Skeleton style={{ height: 42, width: '100%', borderRadius: 10, marginTop: 16 }} />
+        </div>
       </div>
     )
   }

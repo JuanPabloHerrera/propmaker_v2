@@ -537,6 +537,53 @@ textarea.field {
 }
 .doc strong { font-weight: 600; }
 
+/* Tables (e.g. "Recommended Line Items") — render proposal pipe-tables
+   as real tables instead of leaking the markdown pipes/dashes. */
+.doc table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0 16px;
+  font-size: 12.5px;
+  color: var(--ink-1);
+  table-layout: auto;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 0.5px solid var(--line-1);
+}
+.doc table th,
+.doc table td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 0.5px solid var(--line-1);
+  border-right: 0.5px solid var(--line-1);
+  line-height: 1.5;
+}
+.doc table th:last-child,
+.doc table td:last-child { border-right: 0; }
+.doc table tr:last-child td { border-bottom: 0; }
+.doc table th {
+  font-weight: 600;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  background: rgba(77, 138, 107, 0.06); /* sage tint */
+}
+.doc table p { margin: 0; font-size: inherit; line-height: inherit; }
+.doc table td { font-variant-numeric: tabular-nums; }
+.doc .tableWrapper { overflow-x: auto; }
+.doc .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: rgba(77, 138, 107, 0.35);
+  pointer-events: none;
+}
+.doc .resize-cursor { cursor: col-resize; }
+
 /* ───────────────────────────────────────────────────────────────
    Scrollbars (minimal, Mac-like)
    ─────────────────────────────────────────────────────────────── */
@@ -548,10 +595,41 @@ textarea.field {
 .lg-shell *::-webkit-scrollbar-track { background: transparent; }
 
 /* ───────────────────────────────────────────────────────────────
+   Skeleton loaders — shimmer placeholder blocks tuned to the warm
+   canvas. Use with the <Skeleton/> component or `.pm-skeleton` class.
+   ─────────────────────────────────────────────────────────────── */
+.pm-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(28, 24, 20, 0.06);
+  border-radius: 6px;
+  isolation: isolate;
+}
+.pm-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    rgba(255, 252, 245, 0.55) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: pm-shimmer 1400ms ease-in-out infinite;
+}
+
+@keyframes pm-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────
    Reduced motion: kill non-essential animations
    ─────────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .dot-rec, .live-pulse {
+  .dot-rec, .live-pulse, .pm-skeleton::after {
     animation: none;
   }
 }

@@ -9,6 +9,7 @@ import { AudioCaptureButton } from '@/components/meeting/AudioCaptureButton'
 import { NotesPad } from '@/components/meeting/NotesPad'
 import { CollapsiblePanel, CollapsedTab } from '@/components/meeting/CollapsiblePanel'
 import { MeetingToolbar } from '@/components/meeting/MeetingToolbar'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { Meeting, TranscriptSegment } from '@/types'
 import { toast } from 'sonner'
 
@@ -157,10 +158,43 @@ export default function LiveMeetingPage() {
 
   if (!meeting) {
     return (
-      <div className="flex-1 flex items-center justify-center lg-shell">
-        <p className="text-sm" style={{ color: 'var(--ink-3)' }}>
-          Loading…
-        </p>
+      <div
+        className="flex-1 flex flex-col lg-shell"
+        role="status"
+        aria-live="polite"
+      >
+        <span className="sr-only">Loading meeting…</span>
+        <div
+          className="flex items-center gap-3 shrink-0"
+          style={{ padding: '14px 24px', borderBottom: '0.5px solid var(--line-1)' }}
+        >
+          <Skeleton style={{ height: 14, width: 240 }} />
+          <div className="flex-1" />
+          <Skeleton style={{ height: 24, width: 60, borderRadius: 999 }} />
+          <Skeleton style={{ height: 28, width: 84, borderRadius: 8 }} />
+        </div>
+        <div className="flex-1 grid grid-cols-[1fr_1.4fr_1fr] gap-0">
+          <div style={{ padding: '20px 18px', borderRight: '0.5px solid var(--line-1)' }}>
+            <Skeleton style={{ height: 12, width: 100, marginBottom: 14 }} />
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton
+                key={i}
+                style={{ height: 10, width: `${60 + Math.random() * 35}%`, marginBottom: 10 }}
+              />
+            ))}
+          </div>
+          <div style={{ padding: '20px 24px' }}>
+            <Skeleton style={{ height: 18, width: '50%', marginBottom: 16 }} />
+            <Skeleton style={{ height: 14, width: '100%', marginBottom: 8 }} />
+            <Skeleton style={{ height: 14, width: '92%', marginBottom: 8 }} />
+            <Skeleton style={{ height: 14, width: '80%' }} />
+          </div>
+          <div style={{ padding: '20px 18px', borderLeft: '0.5px solid var(--line-1)' }}>
+            <Skeleton style={{ height: 12, width: 80, marginBottom: 14 }} />
+            <Skeleton style={{ height: 52, width: '100%', borderRadius: 10, marginBottom: 8 }} />
+            <Skeleton style={{ height: 52, width: '100%', borderRadius: 10 }} />
+          </div>
+        </div>
       </div>
     )
   }

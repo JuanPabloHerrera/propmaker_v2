@@ -10,6 +10,7 @@ import { ShareLinkCard } from '@/components/share/ShareLinkCard'
 import { RecipientsCard } from '@/components/share/RecipientsCard'
 import { ExportActions } from '@/components/share/ExportActions'
 import { Icon } from '@/components/ui/icon'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { Meeting, Proposal, UserProfile } from '@/types'
 
 export default function SharePage() {
@@ -96,8 +97,16 @@ export default function SharePage() {
 
   if (!meeting || !proposal) {
     return (
-      <div className="flex-1 flex items-center justify-center lg-shell">
-        <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>Loading…</p>
+      <div className="pm-page lg-shell" style={{ padding: '28px 36px 32px' }}>
+        <Skeleton style={{ height: 28, width: 280, marginBottom: 22 }} />
+        <div className="grid grid-cols-[1fr_1fr] gap-5">
+          <Skeleton style={{ height: 420, width: '100%', borderRadius: 14 }} />
+          <div className="flex flex-col gap-3.5">
+            <Skeleton style={{ height: 110, width: '100%', borderRadius: 12 }} />
+            <Skeleton style={{ height: 140, width: '100%', borderRadius: 12 }} />
+            <Skeleton style={{ height: 80, width: '100%', borderRadius: 12 }} />
+          </div>
+        </div>
       </div>
     )
   }
