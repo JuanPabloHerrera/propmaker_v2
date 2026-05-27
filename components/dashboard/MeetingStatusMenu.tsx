@@ -43,26 +43,26 @@ const STATUS_STYLES: Record<DealStatus, StatusStyle> = {
   },
   upcoming: {
     bg: 'rgba(77, 138, 107, 0.16)',
-    color: 'var(--accent-base)',
+    color: 'var(--accent-strong)',
     border: 'rgba(77, 138, 107, 0.28)',
     showDot: true,
   },
   proposal_sent: {
     bg: 'rgba(201, 138, 58, 0.16)',
-    color: 'var(--warn)',
+    color: 'var(--warn-strong)',
     border: 'rgba(201, 138, 58, 0.28)',
     showDot: false,
   },
   won: {
     bg: 'rgba(77, 138, 107, 0.16)',
-    color: 'var(--ok)',
+    color: 'var(--accent-strong)',
     border: 'rgba(77, 138, 107, 0.28)',
     showDot: false,
   },
   lost: {
-    bg: 'rgba(217, 74, 74, 0.14)',
+    bg: 'rgba(176, 52, 52, 0.14)',
     color: 'var(--rec)',
-    border: 'rgba(217, 74, 74, 0.26)',
+    border: 'rgba(176, 52, 52, 0.26)',
     showDot: false,
   },
 }

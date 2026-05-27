@@ -53,10 +53,11 @@
    Warm off-white canvas, sage accent, heavy liquid glass.
    ─────────────────────────────────────────────────────────────── */
 :root {
-  /* ink scale */
+  /* ink scale — ink-1/2/3 are AA text on cream + white (4.5:1+);
+     ink-4 stays decorative-only (hairlines, watermark text) */
   --ink-1: #1c1814;
   --ink-2: #4a443d;
-  --ink-3: #8b827a;
+  --ink-3: #6b605a;
   --ink-4: #b8b0a6;
 
   /* warm canvas */
@@ -67,18 +68,22 @@
   --line-1: rgba(28, 24, 20, 0.08);
   --line-2: rgba(28, 24, 20, 0.04);
 
-  /* sage accent */
+  /* sage accent — base is brand colour (icons/fills/borders, 3:1 OK);
+     `*-strong` are darker variants reserved for inline text on
+     cream/white backgrounds where AA 4.5:1 is required */
   --accent-base: #4d8a6b;
   --accent-2: #6fa888;
+  --accent-strong: #356b51;
   --accent-soft: rgba(77, 138, 107, 0.10);
   --accent-glow: rgba(77, 138, 107, 0.25);
   --accent-tint: rgba(77, 138, 107, 0.06);
 
-  /* status */
-  --rec: #d94a4a;
-  --rec-soft: rgba(217, 74, 74, 0.10);
-  --ok: #4d8a6b;
+  /* status — `*-strong` for body text uses; base values for fills */
+  --rec: #b03434;
+  --rec-soft: rgba(176, 52, 52, 0.10);
+  --ok: #356b51;
   --warn: #c98a3a;
+  --warn-strong: #8a5d20;
   --warn-soft: rgba(201, 138, 58, 0.12);
 
   /* glass tints */
@@ -273,22 +278,22 @@
 .pill-mono { font-family: var(--font-mono), monospace; font-size: 10px; }
 .pill-accent {
   background: var(--accent-soft);
-  color: var(--accent-base);
+  color: var(--accent-strong);
   border-color: rgba(77, 138, 107, 0.2);
 }
 .pill-rec {
   background: var(--rec-soft);
   color: var(--rec);
-  border-color: rgba(217, 74, 74, 0.2);
+  border-color: rgba(176, 52, 52, 0.2);
 }
 .pill-ok {
   background: rgba(77, 138, 107, 0.10);
-  color: var(--ok);
+  color: var(--accent-strong);
   border-color: rgba(77, 138, 107, 0.2);
 }
 .pill-warn {
   background: var(--warn-soft);
-  color: var(--warn);
+  color: var(--warn-strong);
   border-color: rgba(201, 138, 58, 0.2);
 }
 
