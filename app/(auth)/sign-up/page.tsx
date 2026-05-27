@@ -4,9 +4,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 
 export default function SignUpPage() {
@@ -34,55 +31,116 @@ export default function SignUpPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f5f5f7] px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-[#1d1d1f] tracking-tight">PropCopilot</h1>
-          <p className="text-sm text-[#6e6e73] mt-1">Create your account</p>
+    <div className="min-h-screen lg-shell flex items-center justify-center px-4">
+      <div className="w-full" style={{ maxWidth: 440 }}>
+        <div className="flex flex-col items-center text-center" style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 16,
+              background:
+                'linear-gradient(135deg, var(--accent-base) 0%, var(--accent-2) 60%, #e6c992 100%)',
+              display: 'grid',
+              placeItems: 'center',
+              boxShadow:
+                '0 8px 28px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.5)',
+              marginBottom: 20,
+              color: 'white',
+            }}
+          >
+            <svg width="30" height="30" viewBox="0 0 34 34" fill="none" aria-hidden="true">
+              <path
+                d="M11 23V11h6a4 4 0 010 8h-3"
+                stroke="white"
+                strokeWidth="2.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <div className="pm-eyebrow">PropMaker</div>
+          <h1
+            style={{
+              fontSize: 26,
+              fontWeight: 600,
+              letterSpacing: '-0.025em',
+              margin: '4px 0 6px',
+              color: 'var(--ink-1)',
+            }}
+          >
+            Create your account.
+          </h1>
+          <p style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
+            Turn every meeting into a polished proposal.
+          </p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-[#d2d2d7] p-8">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-sm font-medium text-[#1d1d1f]">Email</Label>
-              <Input
+        <div className="card" style={{ padding: 24 }}>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="email" className="field-label">
+                Email
+              </label>
+              <input
                 id="email"
                 type="email"
+                autoComplete="email"
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="h-10 rounded-xl border-[#d2d2d7] bg-[#f5f5f7] focus:bg-white transition-colors"
+                className="field"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-sm font-medium text-[#1d1d1f]">
+            <div>
+              <label htmlFor="password" className="field-label">
                 Password
-                <span className="text-[#6e6e73] font-normal ml-1">(min 8 chars)</span>
-              </Label>
-              <Input
+                <span style={{ color: 'var(--ink-3)', fontWeight: 400, marginLeft: 6 }}>
+                  (min 8 chars)
+                </span>
+              </label>
+              <input
                 id="password"
                 type="password"
+                autoComplete="new-password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 minLength={8}
                 required
-                className="h-10 rounded-xl border-[#d2d2d7] bg-[#f5f5f7] focus:bg-white transition-colors"
+                className="field"
               />
             </div>
-            <Button
+            <button
               type="submit"
               disabled={loading}
-              className="w-full h-10 rounded-xl bg-[#1d1d1f] hover:bg-[#2d2d2f] text-white font-medium transition-colors"
+              className="w-full inline-flex items-center justify-center text-white font-medium disabled:opacity-60"
+              style={{
+                height: 38,
+                marginTop: 4,
+                fontSize: 13.5,
+                borderRadius: 9,
+                background:
+                  'linear-gradient(180deg, var(--accent-2) 0%, var(--accent-base) 100%)',
+                border: '0.5px solid rgba(77, 138, 107, 0.6)',
+                boxShadow:
+                  '0 1px 3px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.3)',
+              }}
             >
               {loading ? 'Creating account…' : 'Create account'}
-            </Button>
+            </button>
           </form>
 
-          <p className="text-center text-sm text-[#6e6e73] mt-6">
+          <div className="hairline" style={{ margin: '20px 0 16px' }} />
+
+          <p style={{ textAlign: 'center', fontSize: 12.5, color: 'var(--ink-3)' }}>
             Already have an account?{' '}
-            <Link href="/sign-in" className="text-[#1d1d1f] font-medium hover:underline">
+            <Link
+              href="/sign-in"
+              style={{ color: 'var(--accent-strong)', fontWeight: 500 }}
+              className="hover:underline"
+            >
               Sign in
             </Link>
           </p>

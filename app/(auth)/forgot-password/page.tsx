@@ -3,9 +3,6 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 
 export default function ForgotPasswordPage() {
@@ -32,37 +29,94 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f5f5f7] px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-[#1d1d1f] tracking-tight">PropCopilot</h1>
-          <p className="text-sm text-[#6e6e73] mt-1">Reset your password</p>
+    <div className="min-h-screen lg-shell flex items-center justify-center px-4">
+      <div className="w-full" style={{ maxWidth: 440 }}>
+        <div className="flex flex-col items-center text-center" style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 16,
+              background:
+                'linear-gradient(135deg, var(--accent-base) 0%, var(--accent-2) 60%, #e6c992 100%)',
+              display: 'grid',
+              placeItems: 'center',
+              boxShadow:
+                '0 8px 28px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.5)',
+              marginBottom: 20,
+              color: 'white',
+            }}
+          >
+            <svg width="30" height="30" viewBox="0 0 34 34" fill="none" aria-hidden="true">
+              <path
+                d="M11 23V11h6a4 4 0 010 8h-3"
+                stroke="white"
+                strokeWidth="2.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <div className="pm-eyebrow">PropMaker</div>
+          <h1
+            style={{
+              fontSize: 26,
+              fontWeight: 600,
+              letterSpacing: '-0.025em',
+              margin: '4px 0 6px',
+              color: 'var(--ink-1)',
+            }}
+          >
+            Reset your password.
+          </h1>
+          <p style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
+            We&apos;ll email you a secure link to set a new one.
+          </p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-[#d2d2d7] p-8">
+        <div className="card" style={{ padding: 24 }}>
           {sent ? (
             <div className="text-center space-y-3" role="status" aria-live="polite">
-              <div className="text-[15px] font-medium text-[#1d1d1f]">Check your inbox</div>
-              <p className="text-[13px] text-[#6e6e73] leading-relaxed">
-                If an account exists for <span className="font-medium">{email}</span>, you&apos;ll receive a password reset link shortly.
+              <div
+                style={{
+                  fontSize: 14.5,
+                  fontWeight: 600,
+                  color: 'var(--ink-1)',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                Check your inbox
+              </div>
+              <p style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
+                If an account exists for{' '}
+                <span style={{ color: 'var(--ink-1)', fontWeight: 500 }}>{email}</span>, you&apos;ll
+                receive a password reset link shortly.
               </p>
               <Link
                 href="/sign-in"
-                className="inline-block text-[13px] text-[#1d1d1f] font-medium hover:underline mt-2"
+                style={{
+                  display: 'inline-block',
+                  marginTop: 8,
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  color: 'var(--accent-strong)',
+                }}
+                className="hover:underline"
               >
                 Back to sign in
               </Link>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-              <p className="text-[13px] text-[#6e6e73] leading-relaxed">
-                Enter the email associated with your account and we&apos;ll send you a link to set a new password.
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+              <p style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
+                Enter the email associated with your account and we&apos;ll send you a link to set a
+                new password.
               </p>
-              <div className="space-y-1.5">
-                <Label htmlFor="email" className="text-sm font-medium text-[#1d1d1f]">
+              <div>
+                <label htmlFor="email" className="field-label">
                   Email
-                </Label>
-                <Input
+                </label>
+                <input
                   id="email"
                   type="email"
                   autoComplete="email"
@@ -70,26 +124,44 @@ export default function ForgotPasswordPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="h-10 rounded-xl border-[#d2d2d7] bg-[#f5f5f7] focus:bg-white transition-colors"
+                  className="field"
                 />
               </div>
-              <Button
+              <button
                 type="submit"
                 disabled={loading || !email}
-                className="w-full h-10 rounded-xl bg-[#1d1d1f] hover:bg-[#2d2d2f] text-white font-medium transition-colors"
+                className="w-full inline-flex items-center justify-center text-white font-medium disabled:opacity-60"
+                style={{
+                  height: 38,
+                  marginTop: 4,
+                  fontSize: 13.5,
+                  borderRadius: 9,
+                  background:
+                    'linear-gradient(180deg, var(--accent-2) 0%, var(--accent-base) 100%)',
+                  border: '0.5px solid rgba(77, 138, 107, 0.6)',
+                  boxShadow:
+                    '0 1px 3px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.3)',
+                }}
               >
                 {loading ? 'Sending…' : 'Send reset link'}
-              </Button>
+              </button>
             </form>
           )}
 
           {!sent && (
-            <p className="text-center text-sm text-[#6e6e73] mt-6">
-              Remembered it?{' '}
-              <Link href="/sign-in" className="text-[#1d1d1f] font-medium hover:underline">
-                Sign in
-              </Link>
-            </p>
+            <>
+              <div className="hairline" style={{ margin: '20px 0 16px' }} />
+              <p style={{ textAlign: 'center', fontSize: 12.5, color: 'var(--ink-3)' }}>
+                Remembered it?{' '}
+                <Link
+                  href="/sign-in"
+                  style={{ color: 'var(--accent-strong)', fontWeight: 500 }}
+                  className="hover:underline"
+                >
+                  Sign in
+                </Link>
+              </p>
+            </>
           )}
         </div>
       </div>

@@ -4,9 +4,6 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 
 export default function ResetPasswordPage() {
@@ -59,38 +56,97 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f5f5f7] px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-[#1d1d1f] tracking-tight">PropCopilot</h1>
-          <p className="text-sm text-[#6e6e73] mt-1">Set a new password</p>
+    <div className="min-h-screen lg-shell flex items-center justify-center px-4">
+      <div className="w-full" style={{ maxWidth: 440 }}>
+        <div className="flex flex-col items-center text-center" style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 16,
+              background:
+                'linear-gradient(135deg, var(--accent-base) 0%, var(--accent-2) 60%, #e6c992 100%)',
+              display: 'grid',
+              placeItems: 'center',
+              boxShadow:
+                '0 8px 28px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.5)',
+              marginBottom: 20,
+              color: 'white',
+            }}
+          >
+            <svg width="30" height="30" viewBox="0 0 34 34" fill="none" aria-hidden="true">
+              <path
+                d="M11 23V11h6a4 4 0 010 8h-3"
+                stroke="white"
+                strokeWidth="2.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <div className="pm-eyebrow">PropMaker</div>
+          <h1
+            style={{
+              fontSize: 26,
+              fontWeight: 600,
+              letterSpacing: '-0.025em',
+              margin: '4px 0 6px',
+              color: 'var(--ink-1)',
+            }}
+          >
+            Set a new password.
+          </h1>
+          <p style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
+            Pick something strong — you&apos;ll use it to sign in.
+          </p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-[#d2d2d7] p-8">
+        <div className="card" style={{ padding: 24 }}>
           {checking ? (
-            <div className="text-center text-[13px] text-[#6e6e73]" role="status" aria-live="polite">
+            <div
+              className="text-center"
+              role="status"
+              aria-live="polite"
+              style={{ fontSize: 12.5, color: 'var(--ink-3)' }}
+            >
               Loading…
             </div>
           ) : !hasSession ? (
             <div className="text-center space-y-3">
-              <div className="text-[15px] font-medium text-[#1d1d1f]">Link expired</div>
-              <p className="text-[13px] text-[#6e6e73] leading-relaxed">
+              <div
+                style={{
+                  fontSize: 14.5,
+                  fontWeight: 600,
+                  color: 'var(--ink-1)',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                Link expired
+              </div>
+              <p style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
                 This reset link is invalid or has expired. Please request a new one.
               </p>
               <Link
                 href="/forgot-password"
-                className="inline-block text-[13px] text-[#1d1d1f] font-medium hover:underline mt-2"
+                style={{
+                  display: 'inline-block',
+                  marginTop: 8,
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  color: 'var(--accent-strong)',
+                }}
+                className="hover:underline"
               >
                 Request a new link
               </Link>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-              <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-sm font-medium text-[#1d1d1f]">
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+              <div>
+                <label htmlFor="password" className="field-label">
                   New password
-                </Label>
-                <Input
+                </label>
+                <input
                   id="password"
                   type="password"
                   autoComplete="new-password"
@@ -104,14 +160,14 @@ export default function ResetPasswordPage() {
                   minLength={8}
                   aria-invalid={fieldError ? 'true' : 'false'}
                   aria-describedby={fieldError ? 'password-error' : undefined}
-                  className="h-10 rounded-xl border-[#d2d2d7] bg-[#f5f5f7] focus:bg-white transition-colors"
+                  className="field"
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="confirm" className="text-sm font-medium text-[#1d1d1f]">
+              <div>
+                <label htmlFor="confirm" className="field-label">
                   Confirm password
-                </Label>
-                <Input
+                </label>
+                <input
                   id="confirm"
                   type="password"
                   autoComplete="new-password"
@@ -125,25 +181,36 @@ export default function ResetPasswordPage() {
                   minLength={8}
                   aria-invalid={fieldError ? 'true' : 'false'}
                   aria-describedby={fieldError ? 'password-error' : undefined}
-                  className="h-10 rounded-xl border-[#d2d2d7] bg-[#f5f5f7] focus:bg-white transition-colors"
+                  className="field"
                 />
               </div>
               {fieldError && (
                 <p
                   id="password-error"
                   role="alert"
-                  className="text-[12px] text-[#c93a3a]"
+                  style={{ fontSize: 11.5, color: 'var(--rec)' }}
                 >
                   {fieldError}
                 </p>
               )}
-              <Button
+              <button
                 type="submit"
                 disabled={loading || !password || !confirm}
-                className="w-full h-10 rounded-xl bg-[#1d1d1f] hover:bg-[#2d2d2f] text-white font-medium transition-colors"
+                className="w-full inline-flex items-center justify-center text-white font-medium disabled:opacity-60"
+                style={{
+                  height: 38,
+                  marginTop: 4,
+                  fontSize: 13.5,
+                  borderRadius: 9,
+                  background:
+                    'linear-gradient(180deg, var(--accent-2) 0%, var(--accent-base) 100%)',
+                  border: '0.5px solid rgba(77, 138, 107, 0.6)',
+                  boxShadow:
+                    '0 1px 3px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.3)',
+                }}
               >
                 {loading ? 'Saving…' : 'Update password'}
-              </Button>
+              </button>
             </form>
           )}
         </div>
