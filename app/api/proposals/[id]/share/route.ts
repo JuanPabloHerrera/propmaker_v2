@@ -53,8 +53,11 @@ export async function POST(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // Mint a slug if there isn't one yet.
+  // Mint a slug if there isn't one yet, and on first share bump the
+  // meeting's deal_status to "proposal_sent" — unless the user has
+  // already moved it to a terminal state (won/lost).
   let slug = proposal.public_slug as string | null
+  const isFirstShare = !slug
   if (!slug) {
     const { data: meeting } = await supabase
       .from('meetings')
@@ -73,6 +76,18 @@ export async function POST(
     if (updateErr) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 })
     }
+  }
+
+  if (isFirstShare) {
+    // .neq is permissive — only bump from draft/upcoming/proposal_sent
+    // into proposal_sent. won/lost stay put because the user has
+    // already declared the outcome.
+    await supabase
+      .from('meetings')
+      .update({ deal_status: 'proposal_sent' })
+      .eq('id', proposal.meeting_id)
+      .eq('user_id', user.id)
+      .not('deal_status', 'in', '(won,lost)')
   }
 
   // Record recipient rows (no email sent — preview mode).

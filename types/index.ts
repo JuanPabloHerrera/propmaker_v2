@@ -102,6 +102,8 @@ export interface Proposal {
   status: ProposalStatus
   public_slug: string | null
   shared_at: string | null
+  first_opened_at: string | null
+  open_count: number
   created_at: string
   updated_at: string
 }

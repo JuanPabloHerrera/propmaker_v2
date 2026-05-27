@@ -136,6 +136,8 @@ export default function SharePage() {
             shareUrl={shareUrl}
             onCreateLink={createOrFetchLink}
             creating={creatingLink}
+            openCount={proposal.open_count ?? 0}
+            firstOpenedAt={proposal.first_opened_at ?? null}
           />
           <RecipientsCard attendees={meeting.attendees ?? []} />
           <ExportActions

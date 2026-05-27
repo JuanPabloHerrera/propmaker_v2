@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ProposalEditor } from '@/components/proposal/ProposalEditor'
 import { SignatureBlock } from '@/components/proposal/SignatureBlock'
 import { AutoPrint } from '@/components/proposal/AutoPrint'
+import { RecordOpen } from './RecordOpen'
 import { brandStyleBlock } from '@/lib/brand'
 import type { Proposal, UserProfile, Meeting } from '@/types'
 
@@ -79,6 +80,7 @@ export default async function PublicProposalPage({ params }: PageProps) {
   return (
     <div className="min-h-screen lg-shell" style={{ padding: '32px 0' }}>
       <AutoPrint />
+      <RecordOpen slug={slug} />
       {brandCss && <style dangerouslySetInnerHTML={{ __html: brandCss }} />}
       <div className="proposal-paper">
         <ProposalEditor

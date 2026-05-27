@@ -9,9 +9,30 @@ interface Props {
   shareUrl: string | null
   onCreateLink: () => Promise<void>
   creating?: boolean
+  openCount?: number
+  firstOpenedAt?: string | null
 }
 
-export function ShareLinkCard({ shareUrl, onCreateLink, creating }: Props) {
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return ''
+  const diff = Date.now() - then
+  const minutes = Math.round(diff / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.round(hours / 24)
+  return `${days}d ago`
+}
+
+export function ShareLinkCard({
+  shareUrl,
+  onCreateLink,
+  creating,
+  openCount = 0,
+  firstOpenedAt = null,
+}: Props) {
   function copy() {
     if (!shareUrl) return
     navigator.clipboard.writeText(shareUrl).catch(() => {})
@@ -83,11 +104,26 @@ export function ShareLinkCard({ shareUrl, onCreateLink, creating }: Props) {
         </button>
       )}
       <div
-        className="flex items-center gap-4 mt-3"
+        className="flex items-center gap-3 mt-3 flex-wrap"
         style={{ fontSize: 11, color: 'var(--ink-3)' }}
       >
-        <span>· Anyone with link</span>
-        <span>· Read-only</span>
+        <span>Anyone with link</span>
+        <span aria-hidden="true">·</span>
+        <span>Read-only</span>
+        {shareUrl && firstOpenedAt && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span style={{ color: 'var(--ok)' }}>
+              Opened {openCount === 1 ? '' : `${openCount}× · `}first {relativeTime(firstOpenedAt)}
+            </span>
+          </>
+        )}
+        {shareUrl && !firstOpenedAt && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span>Not opened yet</span>
+          </>
+        )}
       </div>
     </div>
   )

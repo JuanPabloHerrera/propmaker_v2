@@ -69,6 +69,10 @@ export function RecentMeetingsTable({ meetings }: Props) {
         const when = m.scheduled_at
           ? format(new Date(m.scheduled_at), "MMM d · h:mm a")
           : format(new Date(m.created_at), 'MMM d')
+        const isOverdueUpcoming =
+          m.deal_status === 'upcoming' &&
+          m.scheduled_at != null &&
+          new Date(m.scheduled_at).getTime() < Date.now()
         return (
           <Link
             key={m.id}
@@ -99,8 +103,17 @@ export function RecentMeetingsTable({ meetings }: Props) {
                 </div>
               )}
             </div>
-            <div className="text-[12px]" style={{ color: 'var(--ink-2)' }}>
-              {when}
+            <div className="text-[12px] flex flex-col" style={{ color: 'var(--ink-2)' }}>
+              <span>{when}</span>
+              {isOverdueUpcoming && (
+                <span
+                  className="text-[10.5px] uppercase tracking-wider font-mono"
+                  style={{ color: 'var(--warn)' }}
+                  aria-label="Scheduled time has passed"
+                >
+                  Overdue
+                </span>
+              )}
             </div>
             <div>
               <MeetingStatusMenu
