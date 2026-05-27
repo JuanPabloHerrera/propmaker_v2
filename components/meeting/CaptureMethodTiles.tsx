@@ -9,9 +9,18 @@ interface Props {
   onChange: (next: CaptureMode) => void
   meetingUrl: string
   onMeetingUrlChange: (v: string) => void
+  urlError?: string | null
+  urlInputRef?: React.Ref<HTMLInputElement>
 }
 
-export function CaptureMethodTiles({ value, onChange, meetingUrl, onMeetingUrlChange }: Props) {
+export function CaptureMethodTiles({
+  value,
+  onChange,
+  meetingUrl,
+  onMeetingUrlChange,
+  urlError,
+  urlInputRef,
+}: Props) {
   // Map UI tiles to capture_mode: "Bot joins" → 'recall', "Local mic" → 'browser'.
   // "both" is an advanced option; we expose it via a small chip below.
   const isRecall = value === 'recall' || value === 'both'
@@ -33,17 +42,37 @@ export function CaptureMethodTiles({ value, onChange, meetingUrl, onMeetingUrlCh
         description="PropMaker dials into Zoom / Meet / Teams as a participant."
       >
         {isRecall && (
-          <div className="flex items-center gap-1.5 mono-num mt-2">
-            <Icon name="link" size={12} />
-            <input
-              type="url"
-              value={meetingUrl}
-              onChange={(e) => onMeetingUrlChange(e.target.value)}
-              placeholder="zoom.us/j/123…"
-              className="bg-transparent outline-none flex-1"
-              style={{ fontSize: 11, color: 'var(--ink-3)' }}
-              onClick={(e) => e.stopPropagation()}
-            />
+          <div className="mt-2">
+            <div
+              className="flex items-center gap-1.5 mono-num"
+              style={{
+                borderBottom: `0.5px solid ${urlError ? 'var(--rec)' : 'transparent'}`,
+              }}
+            >
+              <Icon name="link" size={12} />
+              <input
+                ref={urlInputRef}
+                type="url"
+                value={meetingUrl}
+                onChange={(e) => onMeetingUrlChange(e.target.value)}
+                placeholder="zoom.us/j/123…"
+                className="bg-transparent outline-none flex-1"
+                style={{ fontSize: 11, color: 'var(--ink-3)' }}
+                onClick={(e) => e.stopPropagation()}
+                aria-invalid={Boolean(urlError)}
+                aria-describedby={urlError ? 'meeting-url-error' : undefined}
+              />
+            </div>
+            {urlError && (
+              <p
+                id="meeting-url-error"
+                role="alert"
+                className="mt-1"
+                style={{ fontSize: 10.5, color: 'var(--rec)' }}
+              >
+                {urlError}
+              </p>
+            )}
           </div>
         )}
       </Tile>

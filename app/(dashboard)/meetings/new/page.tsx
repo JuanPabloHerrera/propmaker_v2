@@ -11,8 +11,15 @@ import { ProductAttachList } from '@/components/meeting/ProductAttachList'
 import { AgentSuggestionCard } from '@/components/meeting/AgentSuggestionCard'
 import { Icon } from '@/components/ui/icon'
 import { Pill } from '@/components/ui/pill'
+import { FieldError } from '@/components/ui/field-error'
 import type { CaptureMode, MeetingAttendee, MeetingType, Product } from '@/types'
 import { MEETING_TYPE_LABELS } from '@/types'
+
+interface FormErrors {
+  title?: string
+  scheduledAt?: string
+  meetingUrl?: string
+}
 
 type JoinMode = 'now' | 'schedule'
 
@@ -31,6 +38,10 @@ export default function NewMeetingPage() {
   const [products, setProducts] = React.useState<Product[]>([])
   const [attachedIds, setAttachedIds] = React.useState<string[]>([])
   const [loading, setLoading] = React.useState(false)
+  const [errors, setErrors] = React.useState<FormErrors>({})
+  const titleRef = React.useRef<HTMLInputElement>(null)
+  const scheduledRef = React.useRef<HTMLInputElement>(null)
+  const urlRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
     fetch('/api/products')
@@ -43,8 +54,39 @@ export default function NewMeetingPage() {
 
   const needsUrl = captureMode === 'recall' || captureMode === 'both'
 
+  function validate(): FormErrors {
+    const next: FormErrors = {}
+    if (!title.trim()) next.title = 'Give the meeting a title so it shows up in your list.'
+    if (joinMode === 'schedule') {
+      if (!scheduledAt) {
+        next.scheduledAt = 'Pick a date and time.'
+      } else if (new Date(scheduledAt).getTime() < Date.now() - 60_000) {
+        next.scheduledAt = 'Scheduled time is in the past.'
+      }
+    }
+    if (needsUrl) {
+      const url = meetingUrl.trim()
+      if (!url) {
+        next.meetingUrl = 'Paste the meeting link so the bot can join.'
+      } else if (!/^https?:\/\/\S+\.\S+/.test(url)) {
+        next.meetingUrl = 'Looks like an invalid URL.'
+      }
+    }
+    return next
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const v = validate()
+    setErrors(v)
+    if (Object.keys(v).length > 0) {
+      // Focus the first error so SR users hear it and keyboard users
+      // land in the right place.
+      if (v.title) titleRef.current?.focus()
+      else if (v.scheduledAt) scheduledRef.current?.focus()
+      else if (v.meetingUrl) urlRef.current?.focus()
+      return
+    }
     setLoading(true)
 
     const selectedCategories = Array.from(
@@ -131,13 +173,20 @@ export default function NewMeetingPage() {
                 Meeting title
               </span>
               <input
+                ref={titleRef}
                 className="field"
                 style={{ height: 38, fontSize: 14 }}
                 placeholder="e.g. Discovery call — Acme Coffee"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitle(e.target.value)
+                  if (errors.title) setErrors((p) => ({ ...p, title: undefined }))
+                }}
                 required
+                aria-invalid={Boolean(errors.title)}
+                aria-describedby="title-error"
               />
+              <FieldError id="title-error" message={errors.title ?? null} />
             </label>
 
             <div className="grid grid-cols-2 gap-3 mt-3">
@@ -187,13 +236,23 @@ export default function NewMeetingPage() {
                   ))}
                 </div>
                 {joinMode === 'schedule' && (
-                  <input
-                    type="datetime-local"
-                    className="field mt-1.5"
-                    value={scheduledAt}
-                    onChange={(e) => setScheduledAt(e.target.value)}
-                    required
-                  />
+                  <>
+                    <input
+                      ref={scheduledRef}
+                      type="datetime-local"
+                      className="field mt-1.5"
+                      value={scheduledAt}
+                      onChange={(e) => {
+                        setScheduledAt(e.target.value)
+                        if (errors.scheduledAt)
+                          setErrors((p) => ({ ...p, scheduledAt: undefined }))
+                      }}
+                      required
+                      aria-invalid={Boolean(errors.scheduledAt)}
+                      aria-describedby="scheduled-error"
+                    />
+                    <FieldError id="scheduled-error" message={errors.scheduledAt ?? null} />
+                  </>
                 )}
               </label>
             </div>
@@ -252,7 +311,13 @@ export default function NewMeetingPage() {
               value={captureMode}
               onChange={setCaptureMode}
               meetingUrl={meetingUrl}
-              onMeetingUrlChange={setMeetingUrl}
+              onMeetingUrlChange={(v) => {
+                setMeetingUrl(v)
+                if (errors.meetingUrl)
+                  setErrors((p) => ({ ...p, meetingUrl: undefined }))
+              }}
+              urlError={errors.meetingUrl ?? null}
+              urlInputRef={urlRef}
             />
           </div>
 
