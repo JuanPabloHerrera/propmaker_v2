@@ -13,7 +13,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: meeting } = await supabase
     .from('meetings')
-    .select('meeting_type, notes_json, selected_categories')
+    .select('meeting_type, notes_json, selected_categories, attached_product_ids, detected_product_ids')
     .eq('id', id)
     .eq('user_id', user.id)
     .single()
@@ -38,14 +38,35 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // Notes (Tiptap JSON → plain text)
   const notesText = tiptapToText((meeting as Pick<Meeting, 'notes_json'>).notes_json)
 
-  // Catalog filtered by selected categories (empty array = all active products)
-  const selected = (meeting as Pick<Meeting, 'selected_categories'>).selected_categories ?? []
+  // Catalog: union of (products in selected categories) ∪ (explicitly
+  // attached) ∪ (auto-detected from transcript). selected_categories
+  // is a filter; attached + detected are explicit IDs that always
+  // make it into the catalog even if their category was unchecked.
+  const m = meeting as Pick<
+    Meeting,
+    'selected_categories' | 'attached_product_ids' | 'detected_product_ids'
+  >
+  const selected = m.selected_categories ?? []
+  const explicitIds = Array.from(
+    new Set([...(m.attached_product_ids ?? []), ...(m.detected_product_ids ?? [])]),
+  )
+
   let productsQuery = supabase
     .from('products')
     .select('*')
     .eq('user_id', user.id)
     .eq('active', true)
-  if (selected.length > 0) productsQuery = productsQuery.in('category', selected)
+  if (selected.length > 0 && explicitIds.length > 0) {
+    productsQuery = productsQuery.or(
+      `category.in.(${selected.map((c) => `"${c}"`).join(',')}),id.in.(${explicitIds.join(',')})`,
+    )
+  } else if (selected.length > 0) {
+    productsQuery = productsQuery.in('category', selected)
+  } else if (explicitIds.length > 0) {
+    // When no category filter is set, we still load everything so the
+    // model has the full catalog — explicit IDs are guaranteed to be
+    // inside it.
+  }
   const { data: productsData } = await productsQuery
   const products = (productsData ?? []) as Product[]
 

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { QAToolbar } from '@/components/qa/QAToolbar'
 import { SingleQuestionView } from '@/components/qa/SingleQuestionView'
+import { DetectedProductsCard } from '@/components/qa/DetectedProductsCard'
 import { Icon } from '@/components/ui/icon'
 import type { Meeting } from '@/types'
 
@@ -148,6 +149,17 @@ export default function QAPage() {
         totalQuestions={EXPECTED_QUESTIONS}
         onSkip={generateNow}
       />
+
+      <div style={{ padding: '12px 22% 0' }}>
+        <DetectedProductsCard
+          meetingId={id}
+          initialAttachedIds={meeting.attached_product_ids ?? []}
+          initialDetectedIds={meeting.detected_product_ids ?? []}
+          onMeetingChange={(next) =>
+            setMeeting((m) => (m ? ({ ...m, ...next } as Meeting) : m))
+          }
+        />
+      </div>
 
       <SingleQuestionView
         messages={messages}

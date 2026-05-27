@@ -28,7 +28,7 @@ export async function POST(
 
   const { data: meeting } = await supabase
     .from('meetings')
-    .select('meeting_type, selected_categories')
+    .select('meeting_type, selected_categories, attached_product_ids, detected_product_ids')
     .eq('id', id)
     .eq('user_id', user.id)
     .maybeSingle()
@@ -53,14 +53,28 @@ export async function POST(
     (proposal as Pick<Proposal, 'content_json'>).content_json,
   )
 
-  // Catalog filtered by the meeting's selected categories (empty = all).
-  const selected = (meeting as Pick<Meeting, 'selected_categories'>).selected_categories ?? []
+  // Catalog: union of selected-category products, attached, and detected.
+  const m = meeting as Pick<
+    Meeting,
+    'selected_categories' | 'attached_product_ids' | 'detected_product_ids'
+  >
+  const selected = m.selected_categories ?? []
+  const explicitIds = Array.from(
+    new Set([...(m.attached_product_ids ?? []), ...(m.detected_product_ids ?? [])]),
+  )
+
   let productsQuery = supabase
     .from('products')
     .select('*')
     .eq('user_id', user.id)
     .eq('active', true)
-  if (selected.length > 0) productsQuery = productsQuery.in('category', selected)
+  if (selected.length > 0 && explicitIds.length > 0) {
+    productsQuery = productsQuery.or(
+      `category.in.(${selected.map((c) => `"${c}"`).join(',')}),id.in.(${explicitIds.join(',')})`,
+    )
+  } else if (selected.length > 0) {
+    productsQuery = productsQuery.in('category', selected)
+  }
   const { data: productsData } = await productsQuery
   const products = (productsData ?? []) as Product[]
 
