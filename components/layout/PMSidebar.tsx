@@ -30,11 +30,10 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
   const workspace: NavItem[] = [
     {
       id: 'home',
-      label: 'Meetings',
+      label: 'Home',
       href: '/',
       icon: 'home',
-      badge: counts.meetings || undefined,
-      matcher: (p) => p === '/' || p.startsWith('/meetings/'),
+      matcher: (p) => p === '/',
     },
     {
       id: 'new',
@@ -62,7 +61,14 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
       icon: 'doc',
       badge: counts.proposals || undefined,
     },
-    { id: 'archive', label: 'Archive', href: '/?filter=archived', icon: 'archive' },
+    {
+      id: 'meetings',
+      label: 'Meetings',
+      href: '/?filter=meetings',
+      icon: 'cal',
+      badge: counts.meetings || undefined,
+      matcher: (p) => p.startsWith('/meetings/'),
+    },
   ]
 
   const isActive = (item: NavItem) => {

@@ -1,35 +1,9 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
-import { Pill } from '@/components/ui/pill'
 import { Icon } from '@/components/ui/icon'
-import type { Meeting, DealStatus } from '@/types'
-
-function statusPill(status: DealStatus, value: number | null) {
-  switch (status) {
-    case 'upcoming':
-      return (
-        <Pill variant="accent">
-          <span className="dot" style={{ background: 'var(--accent-base)' }} />
-          Upcoming
-        </Pill>
-      )
-    case 'proposal_sent':
-      return <Pill variant="warn">Proposal sent</Pill>
-    case 'won':
-      return <Pill variant="ok">Won{value ? ` · $${formatVal(value)}` : ''}</Pill>
-    case 'lost':
-      return <Pill>Lost</Pill>
-    case 'draft':
-    default:
-      return <Pill>Draft</Pill>
-  }
-}
-
-function formatVal(v: number): string {
-  if (v >= 1000) return `${Math.round(v / 1000)}K`
-  return v.toString()
-}
+import { MeetingStatusMenu } from './MeetingStatusMenu'
+import type { Meeting } from '@/types'
 
 interface Props {
   meetings: Meeting[]
@@ -128,7 +102,13 @@ export function RecentMeetingsTable({ meetings }: Props) {
             <div className="text-[12px]" style={{ color: 'var(--ink-2)' }}>
               {when}
             </div>
-            <div>{statusPill(m.deal_status, m.client_value)}</div>
+            <div>
+              <MeetingStatusMenu
+                meetingId={m.id}
+                status={m.deal_status}
+                value={m.client_value}
+              />
+            </div>
             <span style={{ color: 'var(--ink-3)' }}>
               <Icon name="chevR" size={12} />
             </span>

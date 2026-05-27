@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { GreetingHeader } from '@/components/dashboard/GreetingHeader'
@@ -6,8 +7,11 @@ import { StatTile } from '@/components/dashboard/StatTile'
 import { RecentMeetingsTable } from '@/components/dashboard/RecentMeetingsTable'
 import type { Meeting } from '@/types'
 
+const MEETINGS_PAGE_SIZE = 20
+
 interface Search {
-  filter?: 'all' | 'proposals' | 'won' | 'archived'
+  filter?: 'all' | 'proposals' | 'won' | 'meetings'
+  page?: string
 }
 
 export default async function DashboardPage({
@@ -23,6 +27,7 @@ export default async function DashboardPage({
 
   const params = await searchParams
   const filter = params.filter ?? 'all'
+  const page = Math.max(1, parseInt(params.page ?? '1', 10) || 1)
 
   const { data: profile } = await supabase
     .from('user_profiles')
@@ -34,17 +39,25 @@ export default async function DashboardPage({
     user.email?.split('@')[0] ??
     'there'
 
+  const isMeetingsView = filter === 'meetings'
+  const wantsCount = isMeetingsView
+  const from = isMeetingsView ? (page - 1) * MEETINGS_PAGE_SIZE : 0
+  const to = isMeetingsView ? from + MEETINGS_PAGE_SIZE - 1 : 4
+
   let query = supabase
     .from('meetings')
-    .select('*')
+    .select('*', wantsCount ? { count: 'exact' } : undefined)
     .order('created_at', { ascending: false })
-    .limit(15)
+    .range(from, to)
 
   if (filter === 'proposals') query = query.eq('deal_status', 'proposal_sent')
   else if (filter === 'won') query = query.eq('deal_status', 'won')
 
-  const { data: meetingsData } = await query
+  const { data: meetingsData, count: meetingsCount } = await query
   const meetings = (meetingsData ?? []) as Meeting[]
+  const totalPages = isMeetingsView
+    ? Math.max(1, Math.ceil((meetingsCount ?? 0) / MEETINGS_PAGE_SIZE))
+    : 1
 
   // Up Next — first upcoming scheduled meeting
   const { data: nextData } = await supabase
@@ -125,13 +138,87 @@ export default async function DashboardPage({
             ? 'Proposals sent'
             : filter === 'won'
               ? 'Won deals'
-              : filter === 'archived'
-                ? 'Archived'
+              : filter === 'meetings'
+                ? 'Meetings'
                 : 'Recent meetings'}
         </div>
+        {isMeetingsView && (meetingsCount ?? 0) > 0 && (
+          <div className="text-[11.5px]" style={{ color: 'var(--ink-3)' }}>
+            {from + 1}–{Math.min(to + 1, meetingsCount ?? 0)} of {meetingsCount}
+          </div>
+        )}
       </div>
 
       <RecentMeetingsTable meetings={meetings} />
+
+      {isMeetingsView && totalPages > 1 && (
+        <MeetingsPagination page={page} totalPages={totalPages} />
+      )}
     </div>
+  )
+}
+
+function MeetingsPagination({
+  page,
+  totalPages,
+}: {
+  page: number
+  totalPages: number
+}) {
+  const hasPrev = page > 1
+  const hasNext = page < totalPages
+  return (
+    <div className="flex items-center justify-between mt-4">
+      <PageLink
+        href={`/?filter=meetings&page=${page - 1}`}
+        disabled={!hasPrev}
+        label="← Previous"
+      />
+      <div className="text-[11.5px]" style={{ color: 'var(--ink-3)' }}>
+        Page {page} of {totalPages}
+      </div>
+      <PageLink
+        href={`/?filter=meetings&page=${page + 1}`}
+        disabled={!hasNext}
+        label="Next →"
+      />
+    </div>
+  )
+}
+
+function PageLink({
+  href,
+  disabled,
+  label,
+}: {
+  href: string
+  disabled: boolean
+  label: string
+}) {
+  const base =
+    'rounded-[7px] text-[12px] px-3 py-1.5 transition-colors border'
+  if (disabled) {
+    return (
+      <span
+        className={base}
+        style={{
+          color: 'var(--ink-3)',
+          borderColor: 'var(--line-1)',
+          opacity: 0.5,
+          cursor: 'not-allowed',
+        }}
+      >
+        {label}
+      </span>
+    )
+  }
+  return (
+    <Link
+      href={href}
+      className={`${base} hover:bg-white/55`}
+      style={{ color: 'var(--ink-1)', borderColor: 'var(--line-1)' }}
+    >
+      {label}
+    </Link>
   )
 }
