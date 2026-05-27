@@ -78,6 +78,7 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
 
   return (
     <aside
+      aria-label="Primary navigation"
       className="flex flex-col shrink-0"
       style={{
         width: 240,
@@ -92,6 +93,7 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
       {/* Brand */}
       <div className="flex items-center gap-2.5 px-2.5 pt-1 pb-4">
         <div
+          aria-hidden="true"
           className="grid place-items-center text-white font-semibold text-xs"
           style={{
             width: 24,
@@ -108,17 +110,29 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
         </div>
       </div>
 
-      <SidebarLabel>Workspace</SidebarLabel>
-      {workspace.map((it) => (
-        <SidebarItem key={it.id} item={it} active={isActive(it)} />
-      ))}
+      <nav aria-label="Workspace">
+        <SidebarLabel>Workspace</SidebarLabel>
+        <ul className="contents" role="list">
+          {workspace.map((it) => (
+            <SidebarItem key={it.id} item={it} active={isActive(it)} />
+          ))}
+        </ul>
+      </nav>
 
-      <div className="h-px my-2.5 mx-2" style={{ background: 'var(--line-1)' }} />
+      <div
+        aria-hidden="true"
+        className="h-px my-2.5 mx-2"
+        style={{ background: 'var(--line-1)' }}
+      />
 
-      <SidebarLabel>Library</SidebarLabel>
-      {library.map((it) => (
-        <SidebarItem key={it.id} item={it} active={isActive(it)} />
-      ))}
+      <nav aria-label="Library">
+        <SidebarLabel>Library</SidebarLabel>
+        <ul className="contents" role="list">
+          {library.map((it) => (
+            <SidebarItem key={it.id} item={it} active={isActive(it)} />
+          ))}
+        </ul>
+      </nav>
 
       {/* User card */}
       <div className="mt-auto flex items-center gap-2.5 px-2.5 py-2 rounded-[9px] hover:bg-[rgba(28,24,20,0.04)] transition-colors">
@@ -157,6 +171,7 @@ function SidebarItem({ item, active }: { item: NavItem; active: boolean }) {
   return (
     <Link
       href={item.href}
+      aria-current={active ? 'page' : undefined}
       className={cn(
         'flex items-center gap-[9px] rounded-[7px] text-[12.5px] transition-colors',
         active
