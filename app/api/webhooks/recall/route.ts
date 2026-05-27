@@ -53,6 +53,7 @@ export async function POST(request: Request) {
         speaker,
         text,
         start_time: startTime,
+        source: 'recall',
       })
 
       // Check total word count to decide whether to regenerate suggestions
@@ -101,11 +102,19 @@ export async function POST(request: Request) {
       const segments = await getTranscriptById(transcriptId)
       if (segments.length > 0) {
         await supabase.from('transcript_segments').delete().eq('meeting_id', meetingId)
+        // Delete only recall-sourced segments so we don't wipe browser-captured ones
+        await supabase
+          .from('transcript_segments')
+          .delete()
+          .eq('meeting_id', meetingId)
+          .eq('source', 'recall')
+
         const rows = segments.map((seg) => ({
           meeting_id: meetingId,
           speaker: seg.speaker ?? 'Speaker',
           text: seg.words.map((w) => w.text).join(' '),
           start_time: seg.words[0]?.start_time ?? 0,
+          source: 'recall' as const,
         }))
         await supabase.from('transcript_segments').insert(rows)
 

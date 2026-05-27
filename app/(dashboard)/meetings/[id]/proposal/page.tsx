@@ -1,144 +1,148 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import * as React from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { PostMeetingChat } from '@/components/proposal/PostMeetingChat'
-import { ProposalEditor } from '@/components/proposal/ProposalEditor'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import type { Meeting, Proposal } from '@/types'
-import Link from 'next/link'
 import { toast } from 'sonner'
+import { OutlineSidebar, type OutlineSection } from '@/components/proposal/OutlineSidebar'
+import { ProposalToolbar } from '@/components/proposal/ProposalToolbar'
+import { ProposalEditor } from '@/components/proposal/ProposalEditor'
+import { SignatureBlock } from '@/components/proposal/SignatureBlock'
+import type { Meeting, Proposal, UserProfile } from '@/types'
 
 export default function ProposalPage() {
   const { id } = useParams<{ id: string }>()
   const supabase = createClient()
 
-  const [meeting, setMeeting] = useState<Meeting | null>(null)
-  const [proposal, setProposal] = useState<Proposal | null>(null)
-  const [proposalMarkdown, setProposalMarkdown] = useState<string>('')
-  const [isLocalhost, setIsLocalhost] = useState(false)
-  const [hasTranscript, setHasTranscript] = useState(false)
+  const [meeting, setMeeting] = React.useState<Meeting | null>(null)
+  const [proposal, setProposal] = React.useState<Proposal | null>(null)
+  const [profile, setProfile] = React.useState<UserProfile | null>(null)
+  const [email, setEmail] = React.useState<string>('')
+  const [sections, setSections] = React.useState<OutlineSection[]>([])
+  const [activeSection, setActiveSection] = React.useState<string | null>(null)
+  const [mode, setMode] = React.useState<'edit' | 'preview'>('edit')
+  const [savedAgo, setSavedAgo] = React.useState<string>('just now')
 
-  useEffect(() => {
-    setIsLocalhost(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  }, [])
-
-  const fetchData = useCallback(async () => {
-    const [meetingRes, proposalRes, segCount] = await Promise.all([
+  const fetchData = React.useCallback(async () => {
+    const [meetingRes, proposalRes, profileRes, userRes] = await Promise.all([
       supabase.from('meetings').select('*').eq('id', id).single(),
       fetch(`/api/meetings/${id}/proposal`).then((r) => r.json()),
-      supabase.from('transcript_segments').select('id', { count: 'exact', head: true }).eq('meeting_id', id),
+      supabase.from('user_profiles').select('*').single(),
+      supabase.auth.getUser(),
     ])
     if (meetingRes.data) setMeeting(meetingRes.data as Meeting)
     if (proposalRes) setProposal(proposalRes as Proposal)
-    if ((segCount.count ?? 0) > 0) setHasTranscript(true)
+    if (profileRes.data) setProfile(profileRes.data as UserProfile)
+    if (userRes.data.user?.email) setEmail(userRes.data.user.email)
   }, [id, supabase])
 
-  useEffect(() => {
+  React.useEffect(() => {
     fetchData()
   }, [fetchData])
 
-  // Localhost: silently poll sync until transcript arrives (recording may still be processing)
-  useEffect(() => {
-    if (!isLocalhost || hasTranscript) return
-    const interval = setInterval(async () => {
-      const res = await fetch(`/api/meetings/${id}/sync`, { method: 'POST' })
-      if (res.ok) {
-        const data = await res.json()
-        if (data.synced > 0) setHasTranscript(true)
+  // Light "saved Xs ago" indicator
+  React.useEffect(() => {
+    const t = setInterval(() => {
+      if (proposal?.updated_at) {
+        const secs = Math.round(
+          (Date.now() - new Date(proposal.updated_at).getTime()) / 1000,
+        )
+        if (secs < 60) setSavedAgo(`${secs}s ago`)
+        else setSavedAgo(`${Math.round(secs / 60)} min ago`)
       }
-    }, 15000)
-    return () => clearInterval(interval)
-  }, [isLocalhost, hasTranscript, id])
+    }, 5000)
+    return () => clearInterval(t)
+  }, [proposal?.updated_at])
 
-  function handleProposalGenerated(markdown: string) {
-    setProposalMarkdown(markdown)
-    toast.success('Proposal generated!')
+  function jumpTo(sectionId: string) {
+    const el = document.getElementById(sectionId)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setActiveSection(sectionId)
+    }
   }
 
-  async function toggleStatus() {
+  async function printPDF() {
     if (!proposal) return
-    const newStatus = proposal.status === 'draft' ? 'final' : 'draft'
-    await fetch(`/api/meetings/${id}/proposal`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
-    })
-    setProposal({ ...proposal, status: newStatus })
-    toast.success(`Proposal marked as ${newStatus}.`)
+    // Open the window inside the click gesture so popup blockers don't kill it;
+    // navigate it once we have a slug to use.
+    const w = window.open('about:blank', '_blank')
+    if (!w) {
+      toast.error('Allow popups for PropMaker to export PDF.')
+      return
+    }
+    let slug = proposal.public_slug
+    if (!slug) {
+      try {
+        const res = await fetch(`/api/proposals/${proposal.id}/share`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipients: [], message: null }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? 'Failed to prepare PDF')
+        slug = data.slug
+        setProposal((p) => (p ? { ...p, public_slug: slug } : p))
+      } catch (err) {
+        w.close()
+        toast.error(err instanceof Error ? err.message : 'Failed to prepare PDF')
+        return
+      }
+    }
+    w.location.href = `/p/${slug}?print=1`
   }
+
+  if (!meeting) {
+    return (
+      <div className="flex-1 flex items-center justify-center lg-shell">
+        <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>Loading…</p>
+      </div>
+    )
+  }
+
+  const docTitle = meeting.client_company
+    ? `${meeting.client_company}`
+    : meeting.title
 
   return (
-    <div className="flex flex-col h-screen bg-white">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-[#d2d2d7] shrink-0">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-sm text-[#6e6e73] hover:text-[#1d1d1f] transition-colors">←</Link>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-[#1d1d1f]">
-                {meeting?.title ?? 'Meeting'}
-              </h2>
-              <span className="text-xs text-[#6e6e73]">›</span>
-              <span className="text-sm text-[#6e6e73]">Proposal</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {proposal && (
-            <>
-              <Badge
-                variant="outline"
-                className={
-                  proposal.status === 'final'
-                    ? 'bg-green-50 text-green-700 border-green-200 text-xs'
-                    : 'bg-[#f5f5f7] text-[#6e6e73] border-[#d2d2d7] text-xs'
-                }
-              >
-                {proposal.status === 'final' ? 'Final' : 'Draft'}
-              </Badge>
-              <Button
-                onClick={toggleStatus}
-                variant="outline"
-                size="sm"
-                className="rounded-lg border-[#d2d2d7] text-[#1d1d1f] h-8 text-xs hover:bg-[#f5f5f7]"
-              >
-                {proposal.status === 'final' ? 'Back to draft' : 'Mark as final'}
-              </Button>
-            </>
-          )}
-          {isLocalhost && !hasTranscript && (
-            <span className="text-xs text-[#6e6e73] animate-pulse">Transcript loading…</span>
-          )}
-          <Link href={`/meetings/${id}/live`} className="text-xs text-[#6e6e73] hover:text-[#1d1d1f] transition-colors">
-            View transcript
-          </Link>
-        </div>
-      </div>
+    <div className="flex h-screen lg-shell">
+      <OutlineSidebar
+        sections={sections}
+        activeId={activeSection}
+        onJump={jumpTo}
+        status={proposal?.status === 'final' ? 'Final · published' : 'Draft · auto-saved'}
+        savedAgo={savedAgo}
+      />
 
-      {/* Split layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Chat panel */}
-        <div className="w-80 shrink-0 border-r border-[#d2d2d7] flex flex-col overflow-hidden">
-          <div className="px-5 py-2.5 border-b border-[#d2d2d7]">
-            <span className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wide">Post-meeting Q&A</span>
-          </div>
-          <PostMeetingChat meetingId={id} onProposalGenerated={handleProposalGenerated} />
-        </div>
+      <div className="flex-1 min-w-0 flex flex-col">
+        <ProposalToolbar
+          meetingId={id}
+          title={docTitle}
+          proposal={proposal}
+          mode={mode}
+          onModeChange={setMode}
+          onPrint={printPDF}
+          onRefine={() => toast.info('Refine flow coming soon.')}
+        />
 
-        {/* Proposal editor */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-5 py-2.5 border-b border-[#d2d2d7] flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wide">Proposal</span>
-            <span className="text-xs text-[#6e6e73]">Auto-saved</span>
+        <div className="flex-1 min-h-0 overflow-auto" style={{ padding: '32px 0' }}>
+          <div className="proposal-paper">
+            <ProposalEditor
+              meetingId={id}
+              initialJson={proposal?.content_json ?? null}
+              onSectionsChange={setSections}
+              readOnly={mode === 'preview'}
+            />
+            {(profile?.signature_name || email) && (
+              <SignatureBlock
+                signatureName={profile?.signature_name ?? profile?.full_name ?? ''}
+                signatureTitle={profile?.signature_title ?? ''}
+                email={email}
+                companyName={profile?.company_name}
+                status={proposal?.status ?? 'draft'}
+              />
+            )}
           </div>
-          <ProposalEditor
-            meetingId={id}
-            initialContent={proposalMarkdown || undefined}
-            initialJson={!proposalMarkdown && proposal?.content_json ? proposal.content_json : undefined}
-          />
         </div>
       </div>
     </div>

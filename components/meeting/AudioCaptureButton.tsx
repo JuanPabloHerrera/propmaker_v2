@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { Icon } from '@/components/ui/icon'
 
 interface Props {
   meetingId: string
@@ -96,14 +96,19 @@ export function AudioCaptureButton({ meetingId, onInterim, onFinal }: Props) {
       }
 
       ws.onmessage = (event) => {
-        let data: any
-        try { data = JSON.parse(event.data) } catch { return }
+        let data: { is_final?: boolean; channel?: { alternatives?: { transcript?: string; words?: { speaker?: number }[] }[] } } | null = null
+        try {
+          data = JSON.parse(event.data)
+        } catch {
+          return
+        }
+        if (!data) return
 
         const alt = data?.channel?.alternatives?.[0]
         if (!alt?.transcript?.trim()) return
 
         const isFinal = data.is_final === true
-        const speakerNums = alt.words?.map((w: any) => w.speaker).filter((n: any) => n !== undefined) ?? []
+        const speakerNums = alt.words?.map((w) => w.speaker).filter((n): n is number => n !== undefined) ?? []
         const speakerNum = speakerNums.length > 0 ? speakerNums[0] : 0
         const speaker = `Speaker ${speakerNum + 1}`
 
@@ -136,10 +141,9 @@ export function AudioCaptureButton({ meetingId, onInterim, onFinal }: Props) {
       }
 
       audioTracks[0].onended = () => stop()
-
-    } catch (err: any) {
+    } catch (err) {
       console.error('[audio-capture]', err)
-      alert(err?.message ?? 'Could not start audio capture')
+      alert(err instanceof Error ? err.message : 'Could not start audio capture')
       setStarting(false)
       setActive(false)
     }
@@ -163,27 +167,46 @@ export function AudioCaptureButton({ meetingId, onInterim, onFinal }: Props) {
 
   if (active) {
     return (
-      <Button
+      <button
+        type="button"
         onClick={stop}
-        variant="outline"
-        size="sm"
-        className="rounded-lg border-red-200 text-red-600 h-8 text-xs hover:bg-red-50 flex items-center gap-1.5"
+        className="inline-flex items-center gap-1.5"
+        style={{
+          height: 28,
+          padding: '0 11px',
+          borderRadius: 7,
+          fontSize: 12,
+          color: 'var(--rec)',
+          background: 'rgba(217, 74, 74, 0.10)',
+          border: '0.5px solid rgba(217, 74, 74, 0.25)',
+        }}
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-        Live · Stop
-      </Button>
+        <span className="dot dot-rec" />
+        Stop mic
+      </button>
     )
   }
 
   return (
-    <Button
+    <button
+      type="button"
       onClick={start}
       disabled={starting}
-      variant="outline"
-      size="sm"
-      className="rounded-lg border-[#d2d2d7] text-[#1d1d1f] h-8 text-xs hover:bg-[#f5f5f7]"
+      className="inline-flex items-center gap-1.5 font-medium disabled:opacity-50"
+      style={{
+        height: 28,
+        padding: '0 11px',
+        borderRadius: 7,
+        fontSize: 12,
+        color: 'var(--ink-1)',
+        background: 'rgba(255,255,255,0.6)',
+        border: '0.5px solid rgba(28,24,20,0.10)',
+        boxShadow:
+          '0 1px 2px rgba(28,22,14,0.06), inset 0 0.5px 0 rgba(255,255,255,0.7)',
+      }}
     >
-      {starting ? 'Starting…' : '🎙 Enable live transcript'}
-    </Button>
+      <Icon name="mic" size={12} />
+      {starting ? 'Starting…' : 'Start mic'}
+    </button>
   )
 }

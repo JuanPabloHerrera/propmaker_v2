@@ -1,15 +1,18 @@
 'use client'
 
 import { useEffect, useCallback } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
+import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
+import type { TiptapDocument } from '@/types'
+import type { OutlineSection } from './OutlineSidebar'
 
 interface Props {
   meetingId: string
   initialContent?: string
-  initialJson?: unknown
-  onSave?: () => void
+  initialJson?: TiptapDocument | null
+  onSectionsChange?: (sections: OutlineSection[]) => void
+  readOnly?: boolean
 }
 
 function markdownToTiptapHTML(markdown: string): string {
@@ -27,7 +30,31 @@ function markdownToTiptapHTML(markdown: string): string {
     .replace(/<p><\/p>/g, '')
 }
 
-export function ProposalEditor({ meetingId, initialContent, initialJson }: Props) {
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+function extractSections(editor: Editor): OutlineSection[] {
+  const out: OutlineSection[] = []
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === 'heading' && (node.attrs.level === 1 || node.attrs.level === 2)) {
+      const text = node.textContent.trim()
+      if (text) out.push({ id: slugify(text), label: text })
+    }
+  })
+  return out
+}
+
+export function ProposalEditor({
+  meetingId,
+  initialContent,
+  initialJson,
+  onSectionsChange,
+  readOnly = false,
+}: Props) {
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -36,14 +63,22 @@ export function ProposalEditor({ meetingId, initialContent, initialJson }: Props
         emptyEditorClass: 'is-editor-empty',
       }),
     ],
+    editable: !readOnly,
     content: initialJson ?? (initialContent ? markdownToTiptapHTML(initialContent) : ''),
     editorProps: {
       attributes: {
-        class: 'prose prose-sm max-w-none focus:outline-none min-h-full px-6 py-5 text-[#1d1d1f]',
+        class: 'doc focus:outline-none min-h-full',
       },
+    },
+    onCreate: ({ editor }) => {
+      onSectionsChange?.(extractSections(editor))
+      // Tag h1/h2 nodes with anchor IDs for outline jump-to-scroll.
+      tagHeadings(editor)
     },
     onUpdate: ({ editor }) => {
       debouncedSave(editor.getJSON())
+      onSectionsChange?.(extractSections(editor))
+      tagHeadings(editor)
     },
   })
 
@@ -56,40 +91,33 @@ export function ProposalEditor({ meetingId, initialContent, initialJson }: Props
         body: JSON.stringify({ content_json: json }),
       })
     }, 1500),
-    [meetingId]
+    [meetingId],
   )
 
   useEffect(() => {
     if (!editor) return
     if (initialJson) {
-      editor.commands.setContent(initialJson as any)
+      editor.commands.setContent(initialJson as never)
+      onSectionsChange?.(extractSections(editor))
     } else if (initialContent) {
       editor.commands.setContent(markdownToTiptapHTML(initialContent))
+      onSectionsChange?.(extractSections(editor))
     }
+    tagHeadings(editor)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialJson, initialContent, editor])
 
-  return (
-    <div className="flex-1 overflow-y-auto">
-      <style>{`
-        .tiptap.is-editor-empty:first-child::before {
-          content: attr(data-placeholder);
-          float: left;
-          color: #6e6e73;
-          pointer-events: none;
-          height: 0;
-          font-size: 0.875rem;
-        }
-        .tiptap h1 { font-size: 1.375rem; font-weight: 600; margin: 1.25rem 0 0.5rem; letter-spacing: -0.01em; color: #1d1d1f; }
-        .tiptap h2 { font-size: 1rem; font-weight: 600; margin: 1rem 0 0.375rem; color: #1d1d1f; }
-        .tiptap h3 { font-size: 0.875rem; font-weight: 600; margin: 0.75rem 0 0.25rem; color: #1d1d1f; }
-        .tiptap p { margin: 0.375rem 0; font-size: 0.875rem; line-height: 1.6; color: #1d1d1f; }
-        .tiptap ul { padding-left: 1.25rem; margin: 0.375rem 0; }
-        .tiptap li { font-size: 0.875rem; line-height: 1.6; color: #1d1d1f; margin: 0.125rem 0; }
-        .tiptap strong { font-weight: 600; }
-      `}</style>
-      <EditorContent editor={editor} className="min-h-full" />
-    </div>
-  )
+  return <EditorContent editor={editor} className="min-h-full" />
+}
+
+// Mirror the slug ids onto the DOM so .scrollIntoView() from the outline works.
+function tagHeadings(editor: Editor) {
+  const root = editor.view.dom
+  const headings = root.querySelectorAll('h1, h2')
+  headings.forEach((h) => {
+    const id = slugify((h.textContent ?? '').trim())
+    if (id) (h as HTMLElement).id = id
+  })
 }
 
 function debounce<T extends (...args: Parameters<T>) => void>(fn: T, delay: number): T {

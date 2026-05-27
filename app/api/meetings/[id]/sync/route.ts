@@ -32,14 +32,19 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   const serviceSupabase = createServiceClient()
 
-  // Clear existing segments and re-insert full transcript
-  await serviceSupabase.from('transcript_segments').delete().eq('meeting_id', id)
+  // Clear only Recall-sourced segments — preserve any browser-captured ones
+  await serviceSupabase
+    .from('transcript_segments')
+    .delete()
+    .eq('meeting_id', id)
+    .eq('source', 'recall')
 
   const rows = segments.map((seg) => ({
     meeting_id: id,
     speaker: seg.speaker ?? 'Speaker',
     text: seg.words.map((w) => w.text).join(' '),
     start_time: seg.words[0]?.start_time ?? 0,
+    source: 'recall' as const,
   }))
 
   await serviceSupabase.from('transcript_segments').insert(rows)

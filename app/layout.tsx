@@ -1,7 +1,12 @@
 import type { Metadata } from 'next'
-import { Geist_Mono } from 'next/font/google'
+import { Geist, Geist_Mono } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
+
+const geistSans = Geist({
+  variable: '--font-geist-sans',
+  subsets: ['latin'],
+})
 
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
@@ -9,13 +14,13 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'PropCopilot',
+  title: 'PropMaker',
   description: 'AI meeting intelligence and proposal generator',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geistMono.variable} h-full`}>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full`}>
       <body className="min-h-full flex flex-col">
         {children}
         <Toaster position="bottom-right" />

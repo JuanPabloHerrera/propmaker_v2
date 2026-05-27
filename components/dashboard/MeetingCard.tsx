@@ -21,7 +21,7 @@ export function MeetingCard({ meeting }: { meeting: Meeting }) {
 
   return (
     <Link href={href}>
-      <div className="bg-white border border-[#d2d2d7] rounded-2xl px-5 py-4 hover:border-[#6e6e73] hover:shadow-sm transition-all cursor-pointer">
+      <div className="glass px-5 py-4 hover:border-[#6e6e73] hover:shadow-sm transition-all cursor-pointer">
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2.5">

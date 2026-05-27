@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { streamPostMeetingChat, generateProposal } from '@/lib/claude'
+import { tiptapToText } from '@/lib/tiptap'
+import { markdownToTiptap } from '@/lib/markdown'
 import { NextResponse } from 'next/server'
-import type { MeetingType, TranscriptSegment } from '@/types'
+import type { Meeting, MeetingType, Product, TranscriptSegment } from '@/types'
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -11,7 +13,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: meeting } = await supabase
     .from('meetings')
-    .select('meeting_type')
+    .select('meeting_type, notes_json, selected_categories')
     .eq('id', id)
     .eq('user_id', user.id)
     .single()
@@ -20,16 +22,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { userMessage } = await request.json()
 
-  // Build transcript
+  // Build partitioned transcripts (browser = primary, recall = fallback)
   const { data: segments } = await supabase
     .from('transcript_segments')
-    .select('speaker, text')
+    .select('speaker, text, source')
     .eq('meeting_id', id)
     .order('created_at', { ascending: true })
 
-  const transcript = (segments as TranscriptSegment[] | null)
-    ?.map((s) => `${s.speaker ?? 'Speaker'}: ${s.text}`)
-    .join('\n') ?? ''
+  const rows = (segments as Pick<TranscriptSegment, 'speaker' | 'text' | 'source'>[] | null) ?? []
+  const formatSeg = (s: { speaker: string | null; text: string }) =>
+    `${s.speaker ?? 'Speaker'}: ${s.text}`
+  const browserTranscript = rows.filter((s) => s.source === 'browser').map(formatSeg).join('\n')
+  const recallTranscript = rows.filter((s) => s.source === 'recall').map(formatSeg).join('\n')
+
+  // Notes (Tiptap JSON → plain text)
+  const notesText = tiptapToText((meeting as Pick<Meeting, 'notes_json'>).notes_json)
+
+  // Catalog filtered by selected categories (empty array = all active products)
+  const selected = (meeting as Pick<Meeting, 'selected_categories'>).selected_categories ?? []
+  let productsQuery = supabase
+    .from('products')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('active', true)
+  if (selected.length > 0) productsQuery = productsQuery.in('category', selected)
+  const { data: productsData } = await productsQuery
+  const products = (productsData ?? []) as Product[]
 
   // Fetch existing chat history
   const { data: existingChat } = await supabase
@@ -49,7 +67,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const liveChatHistory = (liveChat ?? []) as Array<{ role: 'user' | 'assistant'; content: string }>
 
-  // Save user's new message if provided
   if (userMessage) {
     await supabase.from('post_meeting_chat').insert({
       meeting_id: id,
@@ -59,8 +76,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     chatHistory.push({ role: 'user', content: userMessage })
   }
 
-  // If no user message and history already ends with assistant, avoid sending invalid messages to Claude
-  // (happens when user refreshes and clicks Start Q&A again)
+  // Replay last assistant message if user just reopened the page
   if (!userMessage && chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'assistant') {
     const lastAssistantMsg = chatHistory[chatHistory.length - 1].content
     const encoder = new TextEncoder()
@@ -76,8 +92,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     )
   }
 
-  // Stream Claude's response
-  const stream = streamPostMeetingChat(transcript, chatHistory, liveChatHistory)
+  const stream = streamPostMeetingChat({
+    browserTranscript,
+    recallTranscript,
+    notesText,
+    products,
+    chatHistory,
+    liveChatHistory,
+  })
 
   let fullText = ''
   const encoder = new TextEncoder()
@@ -92,22 +114,49 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         }
       }
 
-      // Save Claude's full response
       await supabase.from('post_meeting_chat').insert({
         meeting_id: id,
         role: 'assistant',
         content: fullText,
       })
 
-      // If Claude signals it's ready to generate proposal
       if (fullText.includes('[READY_TO_GENERATE]')) {
         const cleanedHistory = [...chatHistory, { role: 'assistant' as const, content: fullText }]
-        const proposalMarkdown = await generateProposal(
-          transcript,
-          cleanedHistory,
-          meeting.meeting_type as MeetingType,
-          liveChatHistory
-        )
+        const proposalMarkdown = await generateProposal({
+          browserTranscript,
+          recallTranscript,
+          notesText,
+          products,
+          chatHistory: cleanedHistory,
+          liveChatHistory,
+          meetingType: meeting.meeting_type as MeetingType,
+        })
+
+        // Persist before signalling the client so the proposal page can
+        // read it on first load — the QA page redirects immediately and
+        // the markdown would otherwise vanish.
+        const content_json = markdownToTiptap(proposalMarkdown)
+        const { data: existing } = await supabase
+          .from('proposals')
+          .select('id')
+          .eq('meeting_id', id)
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        if (existing) {
+          await supabase
+            .from('proposals')
+            .update({ content_json })
+            .eq('id', existing.id)
+        } else {
+          await supabase.from('proposals').insert({
+            meeting_id: id,
+            user_id: user.id,
+            content_json,
+            status: 'draft',
+          })
+        }
+
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ proposal: proposalMarkdown })}\n\n`)
         )

@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { AvatarInitials } from '@/components/ui/avatar-initials'
+import { Icon } from '@/components/ui/icon'
 import type { Suggestion } from '@/types'
 
 interface Message {
@@ -16,6 +16,12 @@ interface Props {
   meetingId: string
 }
 
+const QUICK_REPLIES = [
+  'What did they say about budget?',
+  'Summarize the last 5 min',
+  'Open questions to ask next',
+]
+
 export function LiveChatPanel({ meetingId }: Props) {
   const supabase = createClient()
   const [messages, setMessages] = useState<Message[]>([])
@@ -24,7 +30,6 @@ export function LiveChatPanel({ meetingId }: Props) {
   const [streamingText, setStreamingText] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Load persisted live chat history on mount
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -39,44 +44,53 @@ export function LiveChatPanel({ meetingId }: Props) {
           id: m.id as string,
           role: m.role as 'user' | 'assistant',
           content: m.content as string,
-        }))
+        })),
       )
     })()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [meetingId, supabase])
 
-  // Subscribe to suggestions table and add them as proactive assistant messages
   useEffect(() => {
     const channel = supabase
       .channel(`live-chat-suggestions-${meetingId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'suggestions', filter: `meeting_id=eq.${meetingId}` },
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'suggestions',
+          filter: `meeting_id=eq.${meetingId}`,
+        },
         (payload) => {
           const suggestion = payload.new as Suggestion
-          const questions: string[] = Array.isArray(suggestion.questions) ? suggestion.questions : []
+          const questions: string[] = Array.isArray(suggestion.questions)
+            ? suggestion.questions
+            : []
           if (questions.length === 0) return
           const content = `Consider asking:\n${questions.map((q) => `• ${q}`).join('\n')}`
           setMessages((prev) => [
             ...prev,
             { id: suggestion.id, role: 'assistant', content },
           ])
-        }
+        },
       )
       .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [meetingId, supabase])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingText])
 
-  async function sendMessage() {
-    const text = input.trim()
-    if (!text || streaming) return
+  async function sendMessage(text?: string) {
+    const value = (text ?? input).trim()
+    if (!value || streaming) return
 
-    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: text }
+    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: value }
     const history = messages
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .map((m) => ({ role: m.role, content: m.content }))
@@ -89,15 +103,15 @@ export function LiveChatPanel({ meetingId }: Props) {
     const res = await fetch(`/api/meetings/${meetingId}/live-chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userMessage: text, chatHistory: history }),
+      body: JSON.stringify({ userMessage: value, chatHistory: history }),
     })
-
-    if (!res.body) { setStreaming(false); return }
-
+    if (!res.body) {
+      setStreaming(false)
+      return
+    }
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let assistantText = ''
-
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -112,11 +126,15 @@ export function LiveChatPanel({ meetingId }: Props) {
             assistantText += parsed.text
             setStreamingText(assistantText)
           }
-        } catch { /* malformed SSE line */ }
+        } catch {
+          /* malformed SSE line */
+        }
       }
     }
-
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: assistantText }])
+    setMessages((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), role: 'assistant', content: assistantText },
+    ])
     setStreamingText('')
     setStreaming(false)
   }
@@ -127,56 +145,73 @@ export function LiveChatPanel({ meetingId }: Props) {
   }
 
   return (
-    <div className="w-80 shrink-0 border-l border-[#d2d2d7] flex flex-col overflow-hidden">
-      <div className="px-5 py-2.5 border-b border-[#d2d2d7]">
-        <span className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wide">AI Co-pilot</span>
+    <div className="flex flex-col h-full min-h-0">
+      <div
+        className="flex items-center gap-2 shrink-0"
+        style={{ padding: '12px 14px', borderBottom: '0.5px solid var(--line-1)' }}
+      >
+        <AvatarInitials initials="P" color="bot" size={22} />
+        <div className="flex flex-col">
+          <div className="text-[12px] font-semibold" style={{ color: 'var(--ink-1)' }}>
+            Co-pilot
+          </div>
+          <div className="text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
+            Listening &amp; suggesting
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-auto flex flex-col gap-3" style={{ padding: 14 }}>
         {messages.length === 0 && !streamingText && (
-          <div className="flex flex-col items-center justify-center h-full text-center py-12">
-            <div className="w-10 h-10 rounded-xl bg-[#f5f5f7] flex items-center justify-center text-xl mb-3">💡</div>
-            <p className="text-xs text-[#6e6e73] max-w-[200px]">
-              Suggestions will appear as the conversation unfolds. You can also ask anything about the meeting.
-            </p>
-          </div>
-        )}
-
-        {messages.map((msg) => (
-          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                msg.role === 'user'
-                  ? 'bg-[#1d1d1f] text-white rounded-br-sm'
-                  : 'bg-[#f5f5f7] text-[#1d1d1f] rounded-bl-sm'
-              }`}
-            >
-              {msg.content}
+          <div className="flex flex-col items-center justify-center text-center py-12">
+            <div className="text-[12px]" style={{ color: 'var(--ink-3)' }}>
+              Suggestions will appear as the conversation unfolds.
+            </div>
+            <div className="text-[11px] mt-1" style={{ color: 'var(--ink-3)' }}>
+              Or ask anything below.
             </div>
           </div>
-        ))}
-
+        )}
+        {messages.map((m) =>
+          m.role === 'user' ? (
+            <div key={m.id} style={{ alignSelf: 'flex-end', maxWidth: '80%' }}>
+              <div className="bubble-user whitespace-pre-wrap">{m.content}</div>
+            </div>
+          ) : (
+            <div key={m.id} className="bubble-ai whitespace-pre-wrap">
+              {m.content}
+            </div>
+          ),
+        )}
         {streamingText && (
-          <div className="flex justify-start">
-            <div className="max-w-[88%] rounded-2xl rounded-bl-sm px-3.5 py-2.5 text-sm leading-relaxed bg-[#f5f5f7] text-[#1d1d1f] whitespace-pre-wrap">
-              {streamingText}
-              <span className="inline-block w-1 h-3.5 bg-[#6e6e73] ml-0.5 animate-pulse" />
-            </div>
+          <div className="bubble-ai whitespace-pre-wrap">
+            {streamingText}
+            <span
+              className="inline-block w-0.5 h-3.5 ml-0.5 animate-pulse"
+              style={{ background: 'var(--ink-3)' }}
+            />
           </div>
         )}
-
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="p-4 border-t border-[#d2d2d7]">
-        <div className="flex gap-2">
-          <Textarea
+      <form
+        onSubmit={handleSubmit}
+        className="shrink-0"
+        style={{ padding: 12, borderTop: '0.5px solid var(--line-1)' }}
+      >
+        <div
+          className="glass-soft flex items-end gap-1.5"
+          style={{ borderRadius: 12, padding: '8px 8px 8px 12px' }}
+        >
+          <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about the meeting…"
-            rows={2}
+            placeholder="Ask anything about this meeting…"
+            rows={1}
             disabled={streaming}
-            className="flex-1 resize-none rounded-xl border-[#d2d2d7] bg-[#f5f5f7] focus:bg-white text-sm"
+            className="flex-1 bg-transparent outline-none resize-none"
+            style={{ fontSize: 12, color: 'var(--ink-1)', padding: '6px 0' }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
@@ -184,13 +219,36 @@ export function LiveChatPanel({ meetingId }: Props) {
               }
             }}
           />
-          <Button
+          <button
             type="submit"
             disabled={streaming || !input.trim()}
-            className="self-end rounded-xl bg-[#1d1d1f] hover:bg-[#2d2d2f] text-white h-9 px-4 text-sm"
+            className="inline-flex items-center justify-center text-white"
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              background:
+                'linear-gradient(180deg, var(--accent-2) 0%, var(--accent-base) 100%)',
+              border: '0.5px solid rgba(77,138,107,0.6)',
+            }}
+            aria-label="Send"
           >
-            Send
-          </Button>
+            <Icon name="send" size={12} />
+          </button>
+        </div>
+        <div className="flex gap-1.5 mt-2 flex-wrap">
+          {QUICK_REPLIES.map((q) => (
+            <button
+              key={q}
+              type="button"
+              onClick={() => sendMessage(q)}
+              disabled={streaming}
+              className="pill cursor-pointer hover:bg-white/80 transition-colors"
+              style={{ fontSize: 10.5 }}
+            >
+              {q}
+            </button>
+          ))}
         </div>
       </form>
     </div>

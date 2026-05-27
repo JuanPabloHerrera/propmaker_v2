@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-geist-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,39 +48,84 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ───────────────────────────────────────────────────────────────
+   PropMaker design tokens
+   Warm off-white canvas, sage accent, heavy liquid glass.
+   ─────────────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #1d1d1f;
-  --card: #ffffff;
-  --card-foreground: #1d1d1f;
+  /* ink scale */
+  --ink-1: #1c1814;
+  --ink-2: #4a443d;
+  --ink-3: #8b827a;
+  --ink-4: #b8b0a6;
+
+  /* warm canvas */
+  --bg-canvas: #ebe6dd;
+  --bg-shell: #f4efe6;
+
+  /* hairlines */
+  --line-1: rgba(28, 24, 20, 0.08);
+  --line-2: rgba(28, 24, 20, 0.04);
+
+  /* sage accent */
+  --accent-base: #4d8a6b;
+  --accent-2: #6fa888;
+  --accent-soft: rgba(77, 138, 107, 0.10);
+  --accent-glow: rgba(77, 138, 107, 0.25);
+  --accent-tint: rgba(77, 138, 107, 0.06);
+
+  /* status */
+  --rec: #d94a4a;
+  --rec-soft: rgba(217, 74, 74, 0.10);
+  --ok: #4d8a6b;
+  --warn: #c98a3a;
+  --warn-soft: rgba(201, 138, 58, 0.12);
+
+  /* glass tints */
+  --glass-tint: rgba(255, 251, 244, 0.55);
+  --glass-tint-strong: rgba(255, 250, 240, 0.72);
+  --glass-tint-soft: rgba(255, 252, 246, 0.40);
+
+  /* radii */
+  --r-window: 14px;
+  --r-panel: 14px;
+  --r-card: 12px;
+  --r-pill: 999px;
+  --r-input: 9px;
+
+  /* ── shadcn surface — re-mapped to design tokens ── */
+  --background: var(--bg-shell);
+  --foreground: var(--ink-1);
+  --card: rgba(255, 253, 247, 0.78);
+  --card-foreground: var(--ink-1);
   --popover: #ffffff;
-  --popover-foreground: #1d1d1f;
-  --primary: #1d1d1f;
-  --primary-foreground: #f5f5f7;
-  --secondary: #f5f5f7;
-  --secondary-foreground: #1d1d1f;
-  --muted: #f5f5f7;
-  --muted-foreground: #6e6e73;
-  --accent: #f5f5f7;
-  --accent-foreground: #1d1d1f;
+  --popover-foreground: var(--ink-1);
+  --primary: var(--ink-1);
+  --primary-foreground: #f4efe6;
+  --secondary: var(--bg-canvas);
+  --secondary-foreground: var(--ink-1);
+  --muted: var(--bg-canvas);
+  --muted-foreground: var(--ink-3);
+  --accent: var(--accent-base);
+  --accent-foreground: #ffffff;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: #d2d2d7;
-  --input: #d2d2d7;
-  --ring: #6e6e73;
+  --border: var(--line-1);
+  --input: var(--line-1);
+  --ring: var(--accent-base);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.75rem;
-  --sidebar: #f5f5f7;
-  --sidebar-foreground: #1d1d1f;
-  --sidebar-primary: #1d1d1f;
-  --sidebar-primary-foreground: #f5f5f7;
-  --sidebar-accent: #e8e8ed;
-  --sidebar-accent-foreground: #1d1d1f;
-  --sidebar-border: #d2d2d7;
-  --sidebar-ring: #6e6e73;
+  --sidebar: var(--glass-tint);
+  --sidebar-foreground: var(--ink-1);
+  --sidebar-primary: var(--ink-1);
+  --sidebar-primary-foreground: #f4efe6;
+  --sidebar-accent: var(--accent-soft);
+  --sidebar-accent-foreground: var(--ink-1);
+  --sidebar-border: var(--line-1);
+  --sidebar-ring: var(--accent-base);
 }
 
 @layer base {
@@ -89,23 +134,499 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
     -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'ss01', 'cv11';
+    letter-spacing: -0.005em;
   }
   html {
     @apply font-sans;
   }
   h1, h2, h3, h4, h5, h6 {
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, sans-serif;
     letter-spacing: -0.01em;
   }
 }
 
-/* Live pulse dot */
+/* ───────────────────────────────────────────────────────────────
+   Liquid glass shell — gradient backdrop the glass refracts against
+   ─────────────────────────────────────────────────────────────── */
+.lg-shell {
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(232, 180, 100, 0.12), transparent 60%),
+    radial-gradient(900px 500px at 10% 110%, rgba(77, 138, 107, 0.14), transparent 60%),
+    linear-gradient(180deg, #f4efe6 0%, #ebe6dd 100%);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Glass primitives (.glass, .glass-strong, .glass-soft)
+   ─────────────────────────────────────────────────────────────── */
+.glass,
+.glass-strong {
+  position: relative;
+  border: 0.5px solid rgba(255, 255, 255, 0.65);
+  border-radius: var(--r-panel);
+  box-shadow:
+    0 8px 32px rgba(28, 22, 14, 0.10),
+    0 1px 2px rgba(28, 22, 14, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(28, 24, 20, 0.04);
+}
+.glass {
+  background: var(--glass-tint);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+}
+.glass-strong {
+  background: var(--glass-tint-strong);
+  backdrop-filter: blur(60px) saturate(200%);
+  -webkit-backdrop-filter: blur(60px) saturate(200%);
+}
+.glass-soft {
+  position: relative;
+  background: var(--glass-tint-soft);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 0.5px solid rgba(255, 255, 255, 0.60);
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(28, 22, 14, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.50);
+}
+
+/* Specular top-edge highlight — the "wet" liquid-glass refraction */
+.glass::before,
+.glass-strong::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0)   18%,
+    rgba(255, 255, 255, 0)   82%,
+    rgba(255, 255, 255, 0.18) 100%);
+  mix-blend-mode: overlay;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Card surfaces
+   ─────────────────────────────────────────────────────────────── */
+.card {
+  position: relative;
+  background: rgba(255, 253, 247, 0.78);
+  backdrop-filter: blur(30px) saturate(170%);
+  -webkit-backdrop-filter: blur(30px) saturate(170%);
+  border: 0.5px solid rgba(255, 255, 255, 0.65);
+  border-radius: var(--r-card);
+  box-shadow: 0 4px 18px rgba(28, 22, 14, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+.card-accent {
+  background: linear-gradient(180deg, var(--accent-soft), var(--accent-tint));
+  border-color: rgba(77, 138, 107, 0.18);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Typography helpers
+   ─────────────────────────────────────────────────────────────── */
+.mono-num {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.pm-eyebrow {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.pm-h1 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink-1);
+  margin: 0;
+}
+.hairline {
+  height: 0.5px;
+  background: var(--line-1);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Pills
+   ─────────────────────────────────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  background: rgba(255, 255, 255, 0.55);
+  border: 0.5px solid var(--line-1);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.pill-mono { font-family: var(--font-mono), monospace; font-size: 10px; }
+.pill-accent {
+  background: var(--accent-soft);
+  color: var(--accent-base);
+  border-color: rgba(77, 138, 107, 0.2);
+}
+.pill-rec {
+  background: var(--rec-soft);
+  color: var(--rec);
+  border-color: rgba(217, 74, 74, 0.2);
+}
+.pill-ok {
+  background: rgba(77, 138, 107, 0.10);
+  color: var(--ok);
+  border-color: rgba(77, 138, 107, 0.2);
+}
+.pill-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-color: rgba(201, 138, 58, 0.2);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Dots + pulses
+   ─────────────────────────────────────────────────────────────── */
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot-rec {
+  background: var(--rec);
+  box-shadow: 0 0 0 0 rgba(217, 74, 74, 0.4);
+  animation: dot-pulse 1.6s ease-out infinite;
+}
+@keyframes dot-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(217, 74, 74, 0.5); }
+  70%  { box-shadow: 0 0 0 6px rgba(217, 74, 74, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(217, 74, 74, 0); }
+}
 @keyframes live-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
-.live-pulse {
-  animation: live-pulse 1.5s ease-in-out infinite;
+.live-pulse { animation: live-pulse 1.5s ease-in-out infinite; }
+
+/* ───────────────────────────────────────────────────────────────
+   Segmented control
+   ─────────────────────────────────────────────────────────────── */
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(28, 24, 20, 0.06);
+  border: 0.5px solid rgba(28, 24, 20, 0.04);
+}
+.seg button {
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.seg button.on {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink-1);
+  box-shadow: 0 1px 2px rgba(28, 22, 14, 0.08), inset 0 0.5px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Progress bar
+   ─────────────────────────────────────────────────────────────── */
+.progress {
+  height: 4px;
+  background: rgba(28, 24, 20, 0.08);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.progress > i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent-base));
+  border-radius: inherit;
+  transition: width 240ms ease-out;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Form fields (inputs, textareas, selects)
+   ─────────────────────────────────────────────────────────────── */
+.field {
+  display: block;
+  width: 100%;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: var(--r-input);
+  border: 0.5px solid var(--line-1);
+  background: rgba(255, 255, 255, 0.7);
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-1);
+  box-shadow: inset 0 1px 2px rgba(28, 22, 14, 0.04);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.field::placeholder {
+  color: var(--ink-4);
+}
+.field:focus {
+  border-color: var(--accent-base);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+textarea.field {
+  padding: 8px 11px;
+  height: auto;
+  resize: none;
+  line-height: 1.5;
+}
+.field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+  letter-spacing: 0.01em;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Mac-like custom checkbox
+   ─────────────────────────────────────────────────────────────── */
+.cbox {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 0.5px solid var(--line-1);
+  background: rgba(255, 255, 255, 0.7);
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: white;
+}
+.cbox.on {
+  background: linear-gradient(180deg, var(--accent-2), var(--accent-base));
+  border-color: var(--accent-base);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Transcript lines
+   ─────────────────────────────────────────────────────────────── */
+.tx-line {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  align-items: flex-start;
+}
+.tx-meta {
+  flex-shrink: 0;
+  width: 86px;
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  padding-top: 2px;
+}
+.tx-spk { font-weight: 500; color: var(--ink-2); }
+.tx-body { font-size: 12.5px; color: var(--ink-1); line-height: 1.55; }
+
+/* ───────────────────────────────────────────────────────────────
+   Chat bubbles
+   ─────────────────────────────────────────────────────────────── */
+.bubble-ai {
+  padding: 10px 12px;
+  border-radius: 12px 12px 12px 4px;
+  background: rgba(255, 253, 247, 0.70);
+  border: 0.5px solid var(--line-1);
+  font-size: 12.5px;
+  color: var(--ink-1);
+  line-height: 1.5;
+  box-shadow: 0 1px 2px rgba(28, 22, 14, 0.04);
+}
+.bubble-user {
+  padding: 10px 12px;
+  border-radius: 12px 12px 4px 12px;
+  background: linear-gradient(180deg, rgba(77, 138, 107, 0.16), rgba(77, 138, 107, 0.10));
+  border: 0.5px solid rgba(77, 138, 107, 0.20);
+  font-size: 12.5px;
+  color: var(--ink-1);
+  line-height: 1.5;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Audio waveform
+   ─────────────────────────────────────────────────────────────── */
+.wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 14px;
+}
+.wave i {
+  width: 2px;
+  background: var(--accent-base);
+  border-radius: 2px;
+  opacity: 0.85;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Document typography (proposal + notes pad)
+   ─────────────────────────────────────────────────────────────── */
+.doc { color: var(--ink-1); }
+.doc h1 {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  margin: 0 0 6px;
+}
+.doc h2 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 22px 0 8px;
+  color: var(--ink-1);
+}
+.doc h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 14px 0 6px;
+  color: var(--ink-2);
+}
+.doc p {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-1);
+  margin: 0 0 8px;
+}
+.doc ul {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+  list-style: disc;
+}
+.doc ol {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+  list-style: decimal;
+}
+.doc li {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-1);
+  margin-bottom: 3px;
+}
+.doc .lede {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin-bottom: 14px;
+}
+.doc hr {
+  border: 0;
+  border-top: 0.5px solid var(--line-1);
+  margin: 18px 0;
+}
+.doc strong { font-weight: 600; }
+
+/* ───────────────────────────────────────────────────────────────
+   Scrollbars (minimal, Mac-like)
+   ─────────────────────────────────────────────────────────────── */
+.lg-shell *::-webkit-scrollbar { width: 6px; height: 6px; }
+.lg-shell *::-webkit-scrollbar-thumb {
+  background: rgba(28, 24, 20, 0.15);
+  border-radius: 999px;
+}
+.lg-shell *::-webkit-scrollbar-track { background: transparent; }
+
+/* ───────────────────────────────────────────────────────────────
+   Reduced motion: kill non-essential animations
+   ─────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .dot-rec, .live-pulse {
+    animation: none;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Proposal paper — the card the doc renders into. Lives outside
+   the print block so on-screen and PDF share the same recipe.
+   ─────────────────────────────────────────────────────────────── */
+.proposal-paper {
+  max-width: 720px;
+  margin: 0 auto;
+  background: rgba(255, 253, 247, 0.85);
+  backdrop-filter: blur(40px) saturate(170%);
+  -webkit-backdrop-filter: blur(40px) saturate(170%);
+  border: 0.5px solid rgba(255, 255, 255, 0.65);
+  border-radius: 14px;
+  padding: 48px 56px;
+  box-shadow:
+    0 10px 40px rgba(28, 22, 14, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Print stylesheet — proposals export via window.print()
+   Preserves the design's warm canvas + sage accents (browsers
+   normally strip backgrounds unless print-color-adjust is set).
+   ─────────────────────────────────────────────────────────────── */
+@media print {
+  @page { size: Letter; margin: 0.5in; }
+
+  html, body {
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Flatten the dashboard chrome so only the proposal paper prints */
+  .lg-shell {
+    background: #ffffff !important;
+    height: auto !important;
+    display: block !important;
+  }
+  .pm-no-print { display: none !important; }
+
+  /* Drop the heavy glass treatments — they don't render in print
+     and the shadow/blur waste ink on the bleed. Tints survive. */
+  .glass, .glass-strong, .glass-soft {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+  .glass::before, .glass-strong::before { display: none !important; }
+  .card {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    border-color: rgba(28, 24, 20, 0.10) !important;
+  }
+
+  /* The proposal paper goes full bleed, keeps its warm tint + accent
+     swatches, and drops the floating-card affordances. */
+  .proposal-paper {
+    max-width: 100% !important;
+    margin: 0 !important;
+    background: rgba(255, 253, 247, 1) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    border: 0.5px solid rgba(28, 24, 20, 0.08) !important;
+    border-radius: 0 !important;
+    padding: 32px 36px !important;
+  }
+
+  .doc { max-width: 100% !important; }
+
+  /* Page breaks: keep headings with their content */
+  .doc h1, .doc h2, .doc h3 { break-after: avoid-page; }
 }
