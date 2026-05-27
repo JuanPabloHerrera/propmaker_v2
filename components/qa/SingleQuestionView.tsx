@@ -95,6 +95,26 @@ export function SingleQuestionView({
           </React.Fragment>
         ))}
 
+        {/* Thinking indicator — agent has received the answer but no tokens
+            have arrived yet. */}
+        {streaming && !activeText && (
+          <div className="flex gap-2.5 items-start">
+            <AvatarInitials initials="P" color="bot" size={26} ring />
+            <div
+              className="bubble-ai"
+              style={{ padding: '12px 14px' }}
+              role="status"
+              aria-label="Agent is thinking"
+            >
+              <span className="typing-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Active question */}
         {activeText && (
           <div className="flex gap-2.5 items-start">
