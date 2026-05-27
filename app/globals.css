@@ -595,6 +595,60 @@ textarea.field {
 .lg-shell *::-webkit-scrollbar-track { background: transparent; }
 
 /* ───────────────────────────────────────────────────────────────
+   Default focus-visible ring. Tailwind's @layer base sets
+   outline-ring/50 on every element via `*`, which is too noisy.
+   We override with a tighter sage ring on actually-interactive
+   elements only when keyboard-focused. Mouse focus stays clean.
+   ─────────────────────────────────────────────────────────────── */
+@layer base {
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  [role="menuitem"]:focus-visible,
+  [role="tab"]:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid var(--accent-base);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  /* Pill-shaped triggers should follow their own border radius */
+  .pill:focus-visible,
+  [data-slot="dropdown-menu-trigger"]:focus-visible {
+    outline-offset: 2px;
+    border-radius: 999px;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Skip link — first focusable element on the dashboard layout, lets
+   keyboard users jump past the sidebar straight to main content.
+   ─────────────────────────────────────────────────────────────── */
+.pm-skip-link {
+  position: absolute;
+  top: -40px;
+  left: 8px;
+  z-index: 100;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: white;
+  background: var(--accent-base);
+  border-radius: 6px;
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: top 80ms ease-in;
+}
+.pm-skip-link:focus,
+.pm-skip-link:focus-visible {
+  top: 8px;
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+/* ───────────────────────────────────────────────────────────────
    Skeleton loaders — shimmer placeholder blocks tuned to the warm
    canvas. Use with the <Skeleton/> component or `.pm-skeleton` class.
    ─────────────────────────────────────────────────────────────── */

@@ -37,6 +37,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen lg-shell">
+      <a
+        href="#main-content"
+        className="pm-skip-link"
+      >
+        Skip to main content
+      </a>
       <PMSidebar
         user={{
           name: displayName,
@@ -45,7 +51,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
         }}
         counts={counts}
       />
-      <main className="flex-1 overflow-auto min-w-0">{children}</main>
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 overflow-auto min-w-0 focus:outline-none"
+      >
+        {children}
+      </main>
     </div>
   )
 }
