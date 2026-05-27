@@ -224,3 +224,85 @@ After enough questions are answered (or the consultant says they're done), reply
     messages,
   })
 }
+
+// ── Proposal refine ─────────────────────────────────────────────────
+// Two-mode streaming for a focused refine drawer on the proposal page.
+// `mode: 'chat'` returns conversational suggestions (Claude explains
+// what it would change and asks for confirmation). `mode: 'apply'`
+// returns the FULL rewritten proposal markdown that the client then
+// hydrates into the Tiptap editor.
+
+export type RefineMode = 'chat' | 'apply'
+
+interface RefineInput {
+  mode: RefineMode
+  currentMarkdown: string
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+  products: Product[]
+  meetingType: MeetingType
+}
+
+export function streamProposalRefine({
+  mode,
+  currentMarkdown,
+  history,
+  products,
+  meetingType,
+}: RefineInput) {
+  const label = MEETING_TYPE_LABELS[meetingType]
+  const catalogBlock = renderCatalog(products)
+
+  const sharedRules = `Catalog rule:
+- The user's catalog is the ONLY set of offerings you may propose. Do not invent line items, services, or products that are not in the catalog.
+- If the catalog is empty, prefer narrative changes over inventing pricing.
+
+Source priority: notes + Q&A are authoritative; transcripts are reference.`
+
+  const chatInstructions = `You are revising an existing project proposal for a ${label} engagement, working with the consultant in a back-and-forth refinement chat.
+
+${sharedRules}
+
+Your behavior in this turn:
+- Read the consultant's request and the CURRENT PROPOSAL below.
+- Reply conversationally (3-6 sentences). Be specific about what you would change and where (which section, which line item, which sentence).
+- Ask one clarifying question if the request is ambiguous.
+- DO NOT rewrite the proposal here. The consultant will click "Apply changes" when ready, which triggers a separate rewrite pass.`
+
+  const applyInstructions = `You are revising an existing project proposal for a ${label} engagement.
+
+${sharedRules}
+
+Your behavior in this turn:
+- Apply the consultant's accumulated requests from the chat to the CURRENT PROPOSAL.
+- Return ONLY the FULL revised proposal in Markdown — no preamble, no chat, no code fences around the whole thing.
+- Preserve all unchanged content verbatim. Only change what the chat asked you to change.
+- Keep the section structure (## Executive Summary, ## Scope of Work, ## Timeline & Milestones, ## Recommended Line Items, ## Budget & Pricing) unless the chat explicitly removed a section.`
+
+  const messages: Anthropic.MessageParam[] = history.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }))
+
+  if (mode === 'apply' && messages.length === 0) {
+    messages.push({ role: 'user', content: 'Apply the changes we discussed.' })
+  }
+
+  const contextBlock = [
+    `## USER PRODUCT CATALOG\n${catalogBlock}`,
+    `## CURRENT PROPOSAL (Markdown)\n${currentMarkdown || '(empty)'}`,
+  ].join('\n\n')
+
+  return anthropic.messages.stream({
+    model: 'claude-sonnet-4-6',
+    max_tokens: mode === 'apply' ? 6144 : 768,
+    system: [
+      {
+        type: 'text',
+        text: mode === 'apply' ? applyInstructions : chatInstructions,
+        cache_control: { type: 'ephemeral' },
+      },
+      { type: 'text', text: contextBlock, cache_control: { type: 'ephemeral' } },
+    ],
+    messages,
+  })
+}

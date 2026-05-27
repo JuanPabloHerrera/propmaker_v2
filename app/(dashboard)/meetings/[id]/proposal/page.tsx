@@ -8,6 +8,7 @@ import { OutlineSidebar, type OutlineSection } from '@/components/proposal/Outli
 import { ProposalToolbar } from '@/components/proposal/ProposalToolbar'
 import { ProposalEditor } from '@/components/proposal/ProposalEditor'
 import { SignatureBlock } from '@/components/proposal/SignatureBlock'
+import { RefineDrawer } from '@/components/proposal/RefineDrawer'
 import { brandStyleBlock } from '@/lib/brand'
 import type { Meeting, Proposal, UserProfile } from '@/types'
 
@@ -24,6 +25,7 @@ export default function ProposalPage() {
   const [mode, setMode] = React.useState<'edit' | 'preview'>('edit')
   const [savedAgo, setSavedAgo] = React.useState<string>('just now')
   const [statusBusy, setStatusBusy] = React.useState(false)
+  const [refineOpen, setRefineOpen] = React.useState(false)
 
   const fetchData = React.useCallback(async () => {
     const [meetingRes, proposalRes, profileRes, userRes] = await Promise.all([
@@ -154,7 +156,13 @@ export default function ProposalPage() {
           mode={mode}
           onModeChange={setMode}
           onPrint={printPDF}
-          onRefine={() => toast.info('Refine flow coming soon.')}
+          onRefine={() => {
+            if (!proposal) {
+              toast.info('Generate the proposal first, then refine.')
+              return
+            }
+            setRefineOpen(true)
+          }}
           onToggleStatus={toggleStatus}
           statusBusy={statusBusy}
         />
@@ -184,6 +192,13 @@ export default function ProposalPage() {
           </div>
         </div>
       </div>
+
+      <RefineDrawer
+        open={refineOpen}
+        onClose={() => setRefineOpen(false)}
+        meetingId={id}
+        onApplied={fetchData}
+      />
     </div>
   )
 }
