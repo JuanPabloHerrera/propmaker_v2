@@ -69,8 +69,12 @@ export default function ProposalPage() {
 
   async function toggleStatus() {
     if (!proposal || statusBusy) return
-    const next = proposal.status === 'final' ? 'draft' : 'final'
+    const prev = proposal.status
+    const next = prev === 'final' ? 'draft' : 'final'
     setStatusBusy(true)
+    // Optimistic: flip the pill immediately so the user gets instant
+    // feedback. Revert on API failure.
+    setProposal((p) => (p ? { ...p, status: next } : p))
     try {
       const res = await fetch(`/api/meetings/${id}/proposal`, {
         method: 'POST',
@@ -79,7 +83,6 @@ export default function ProposalPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to update status')
-      setProposal((p) => (p ? { ...p, status: next } : p))
       // Bump the meeting's deal_status when finalizing so the dashboard's
       // recent-meetings table reflects it without a separate Share step.
       if (next === 'final') {
@@ -91,6 +94,8 @@ export default function ProposalPage() {
       }
       toast.success(next === 'final' ? 'Proposal marked as final.' : 'Reopened as draft.')
     } catch (err) {
+      // Revert the optimistic change.
+      setProposal((p) => (p ? { ...p, status: prev } : p))
       toast.error(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
       setStatusBusy(false)
