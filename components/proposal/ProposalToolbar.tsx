@@ -16,6 +16,8 @@ interface Props {
   onModeChange: (m: EditMode) => void
   onPrint: () => void
   onRefine?: () => void
+  onToggleStatus: () => void
+  statusBusy?: boolean
 }
 
 export function ProposalToolbar({
@@ -26,7 +28,10 @@ export function ProposalToolbar({
   onModeChange,
   onPrint,
   onRefine,
+  onToggleStatus,
+  statusBusy,
 }: Props) {
+  const isFinal = proposal?.status === 'final'
   return (
     <div
       className="flex items-center gap-2.5 shrink-0 pm-no-print"
@@ -100,6 +105,36 @@ export function ProposalToolbar({
         <Icon name="download" size={12} />
         PDF
       </button>
+
+      {proposal && (
+        <button
+          type="button"
+          onClick={onToggleStatus}
+          disabled={statusBusy}
+          className="inline-flex items-center gap-1.5 font-medium"
+          style={{
+            height: 24,
+            padding: '0 9px',
+            borderRadius: 6,
+            fontSize: 11.5,
+            color: isFinal ? 'var(--ink-1)' : 'var(--ok)',
+            background: isFinal
+              ? 'rgba(255,255,255,0.6)'
+              : 'rgba(77,138,107,0.10)',
+            border: isFinal
+              ? '0.5px solid rgba(28,24,20,0.10)'
+              : '0.5px solid rgba(77,138,107,0.25)',
+            opacity: statusBusy ? 0.5 : 1,
+          }}
+        >
+          <Icon name="check" size={12} strokeWidth={1.8} />
+          {statusBusy
+            ? 'Saving…'
+            : isFinal
+              ? 'Reopen as draft'
+              : 'Mark as final'}
+        </button>
+      )}
 
       <Link
         href={`/meetings/${meetingId}/proposal/share`}

@@ -22,6 +22,7 @@ export default function ProposalPage() {
   const [activeSection, setActiveSection] = React.useState<string | null>(null)
   const [mode, setMode] = React.useState<'edit' | 'preview'>('edit')
   const [savedAgo, setSavedAgo] = React.useState<string>('just now')
+  const [statusBusy, setStatusBusy] = React.useState(false)
 
   const fetchData = React.useCallback(async () => {
     const [meetingRes, proposalRes, profileRes, userRes] = await Promise.all([
@@ -59,6 +60,36 @@ export default function ProposalPage() {
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
       setActiveSection(sectionId)
+    }
+  }
+
+  async function toggleStatus() {
+    if (!proposal || statusBusy) return
+    const next = proposal.status === 'final' ? 'draft' : 'final'
+    setStatusBusy(true)
+    try {
+      const res = await fetch(`/api/meetings/${id}/proposal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to update status')
+      setProposal((p) => (p ? { ...p, status: next } : p))
+      // Bump the meeting's deal_status when finalizing so the dashboard's
+      // recent-meetings table reflects it without a separate Share step.
+      if (next === 'final') {
+        await fetch(`/api/meetings/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deal_status: 'proposal_sent' }),
+        }).catch(() => {})
+      }
+      toast.success(next === 'final' ? 'Proposal marked as final.' : 'Reopened as draft.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setStatusBusy(false)
     }
   }
 
@@ -123,6 +154,8 @@ export default function ProposalPage() {
           onModeChange={setMode}
           onPrint={printPDF}
           onRefine={() => toast.info('Refine flow coming soon.')}
+          onToggleStatus={toggleStatus}
+          statusBusy={statusBusy}
         />
 
         <div className="flex-1 min-h-0 overflow-auto" style={{ padding: '32px 0' }}>
