@@ -611,16 +611,17 @@ textarea.field {
     border-color: rgba(28, 24, 20, 0.10) !important;
   }
 
-  /* The proposal paper goes full bleed, keeps its warm tint + accent
-     swatches, and drops the floating-card affordances. */
+  /* The proposal paper goes full bleed on a clean white sheet, drops
+     the floating-card affordances. Inline accent swatches/callouts in
+     the content keep their tint. */
   .proposal-paper {
     max-width: 100% !important;
     margin: 0 !important;
-    background: rgba(255, 253, 247, 1) !important;
+    background: #ffffff !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     box-shadow: none !important;
-    border: 0.5px solid rgba(28, 24, 20, 0.08) !important;
+    border: none !important;
     border-radius: 0 !important;
     padding: 32px 36px !important;
   }
