@@ -8,6 +8,7 @@ import { OutlineSidebar, type OutlineSection } from '@/components/proposal/Outli
 import { ProposalToolbar } from '@/components/proposal/ProposalToolbar'
 import { ProposalEditor } from '@/components/proposal/ProposalEditor'
 import { SignatureBlock } from '@/components/proposal/SignatureBlock'
+import { brandStyleBlock } from '@/lib/brand'
 import type { Meeting, Proposal, UserProfile } from '@/types'
 
 export default function ProposalPage() {
@@ -159,6 +160,10 @@ export default function ProposalPage() {
         />
 
         <div className="flex-1 min-h-0 overflow-auto" style={{ padding: '32px 0' }}>
+          {(() => {
+            const css = brandStyleBlock(profile?.brand_colors)
+            return css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null
+          })()}
           <div className="proposal-paper">
             <ProposalEditor
               meetingId={id}

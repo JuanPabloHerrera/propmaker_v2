@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ProposalEditor } from '@/components/proposal/ProposalEditor'
 import { SignatureBlock } from '@/components/proposal/SignatureBlock'
 import { AutoPrint } from '@/components/proposal/AutoPrint'
+import { brandStyleBlock } from '@/lib/brand'
 import type { Proposal, UserProfile, Meeting } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -35,6 +36,7 @@ export default async function PublicProposalPage({ params }: PageProps) {
   let signatureTitle = ''
   let companyName: string | null = null
   let logoUrl: string | null = null
+  let brandColors: string[] = []
   let title = 'Proposal'
 
   // The "Public read profiles of users with shared proposals" RLS policy
@@ -54,26 +56,30 @@ export default async function PublicProposalPage({ params }: PageProps) {
 
     const profileRes = await supabase
       .from('user_profiles')
-      .select('signature_name, signature_title, company_name, full_name, logo_url')
+      .select('signature_name, signature_title, company_name, full_name, logo_url, brand_colors')
       .eq('user_id', p.user_id)
       .maybeSingle()
     if (profileRes.data) {
       const prof = profileRes.data as Pick<
         UserProfile,
-        'signature_name' | 'signature_title' | 'company_name' | 'full_name' | 'logo_url'
+        'signature_name' | 'signature_title' | 'company_name' | 'full_name' | 'logo_url' | 'brand_colors'
       >
       signatureName = prof.signature_name ?? prof.full_name ?? ''
       signatureTitle = prof.signature_title ?? ''
       companyName = prof.company_name ?? null
       logoUrl = prof.logo_url ?? null
+      brandColors = prof.brand_colors ?? []
     }
   } catch {
     // ignore — render proposal without surrounding metadata
   }
 
+  const brandCss = brandStyleBlock(brandColors)
+
   return (
     <div className="min-h-screen lg-shell" style={{ padding: '32px 0' }}>
       <AutoPrint />
+      {brandCss && <style dangerouslySetInnerHTML={{ __html: brandCss }} />}
       <div className="proposal-paper">
         <ProposalEditor
           meetingId={p.meeting_id}
