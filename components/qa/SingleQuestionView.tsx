@@ -31,8 +31,13 @@ export function SingleQuestionView({
   streaming,
   quickReplies = [],
 }: Props) {
-  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
-  const activeText = streamingText || lastAssistant?.content || ''
+  // Only show an "active" question when the latest message is an unanswered
+  // assistant turn. Once the user answers, the question moves into priorPairs
+  // below and should not also be rendered as the active card.
+  const lastMessage = messages[messages.length - 1]
+  const pendingQuestion =
+    lastMessage?.role === 'assistant' ? lastMessage.content : ''
+  const activeText = streamingText || pendingQuestion
 
   // Show prior Q/A as a compact stack above the active question.
   const priorPairs: { q: string; a: string }[] = []
