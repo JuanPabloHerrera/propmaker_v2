@@ -25,6 +25,7 @@ export interface UserProfile {
   signature_name: string | null
   signature_title: string | null
   brand_colors: string[]
+  logo_url: string | null
   onboarded_at: string | null
   created_at: string
   updated_at: string

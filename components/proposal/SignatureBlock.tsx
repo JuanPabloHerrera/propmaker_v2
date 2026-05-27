@@ -7,6 +7,7 @@ interface Props {
   signatureTitle: string
   email: string
   companyName?: string | null
+  logoUrl?: string | null
   status: 'draft' | 'final'
 }
 
@@ -20,6 +21,7 @@ export function SignatureBlock({
   signatureTitle,
   email,
   companyName,
+  logoUrl,
   status,
 }: Props) {
   return (
@@ -27,7 +29,28 @@ export function SignatureBlock({
       <hr />
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2.5">
-          <AvatarInitials initials={initialsFrom(signatureName, email)} color="sage" size={32} />
+          {logoUrl ? (
+            // Plain <img>: the Supabase Storage URL is dynamic and we
+            // don't want the Next image optimizer in the middle of a
+            // print/share flow.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoUrl}
+              alt={companyName ? `${companyName} logo` : 'Company logo'}
+              width={32}
+              height={32}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                objectFit: 'contain',
+                background: '#ffffff',
+                border: '0.5px solid rgba(28,24,20,0.10)',
+              }}
+            />
+          ) : (
+            <AvatarInitials initials={initialsFrom(signatureName, email)} color="sage" size={32} />
+          )}
           <div className="flex flex-col">
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-1)' }}>
               {signatureName || email.split('@')[0]}

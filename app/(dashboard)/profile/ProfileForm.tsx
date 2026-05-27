@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { VoiceTonePills } from '@/components/profile/VoiceTonePills'
 import { SignatureCard } from '@/components/profile/SignatureCard'
 import { BrandPalette } from '@/components/profile/BrandPalette'
+import { LogoUpload } from '@/components/profile/LogoUpload'
 import type { UserProfile } from '@/types'
 
 interface ProfileFormProps {
@@ -26,6 +27,7 @@ export function ProfileForm({ profile, email }: ProfileFormProps) {
     signature_name: profile.signature_name ?? profile.full_name ?? '',
     signature_title: profile.signature_title ?? '',
     brand_colors: profile.brand_colors ?? [],
+    logo_url: profile.logo_url ?? null,
   })
   const [saving, setSaving] = React.useState(false)
 
@@ -83,20 +85,10 @@ export function ProfileForm({ profile, email }: ProfileFormProps) {
       {/* Company */}
       <div className="card p-[22px] mb-3.5">
         <div className="flex gap-4 items-start">
-          <div
-            className="grid place-items-center text-[10.5px] uppercase tracking-wider font-mono"
-            style={{
-              width: 96,
-              height: 96,
-              borderRadius: 16,
-              background:
-                'repeating-linear-gradient(135deg, rgba(28,24,20,0.045) 0 8px, transparent 8px 16px), rgba(255,253,247,0.4)',
-              border: '0.5px dashed rgba(28,24,20,0.18)',
-              color: 'var(--ink-3)',
-            }}
-          >
-            LOGO
-          </div>
+          <LogoUpload
+            value={state.logo_url}
+            onChange={(v) => set('logo_url', v)}
+          />
           <div className="flex-1 grid grid-cols-2 gap-3">
             <Field label="Your name">
               <input

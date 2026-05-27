@@ -172,6 +172,7 @@ export default function ProposalPage() {
                 signatureTitle={profile?.signature_title ?? ''}
                 email={email}
                 companyName={profile?.company_name}
+                logoUrl={profile?.logo_url ?? null}
                 status={proposal?.status ?? 'draft'}
               />
             )}

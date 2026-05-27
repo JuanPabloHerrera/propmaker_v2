@@ -29,6 +29,7 @@ interface ProfilePatch {
   signature_name?: string | null
   signature_title?: string | null
   brand_colors?: string[]
+  logo_url?: string | null
 }
 
 export async function PATCH(request: Request) {
@@ -52,6 +53,7 @@ export async function PATCH(request: Request) {
     'signature_name',
     'signature_title',
     'brand_colors',
+    'logo_url',
   ]
   for (const key of allowed) {
     if (key in body) {

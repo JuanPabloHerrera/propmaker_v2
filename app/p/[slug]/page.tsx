@@ -34,11 +34,13 @@ export default async function PublicProposalPage({ params }: PageProps) {
   let signatureName = ''
   let signatureTitle = ''
   let companyName: string | null = null
+  let logoUrl: string | null = null
   let title = 'Proposal'
 
-  // Try to read the owner's profile and meeting via service client (unauthenticated)
-  // — these queries only succeed if RLS allows or if we widen later. For v1 they
-  // are best-effort and we silently degrade.
+  // The "Public read profiles of users with shared proposals" RLS policy
+  // (migration 006) lets anon clients read signature + brand fields for
+  // any user who has at least one proposal with a public_slug. The
+  // meeting read is best-effort and silently degrades if RLS blocks.
   try {
     const meetingRes = await supabase
       .from('meetings')
@@ -52,14 +54,18 @@ export default async function PublicProposalPage({ params }: PageProps) {
 
     const profileRes = await supabase
       .from('user_profiles')
-      .select('signature_name, signature_title, company_name, full_name')
+      .select('signature_name, signature_title, company_name, full_name, logo_url')
       .eq('user_id', p.user_id)
       .maybeSingle()
     if (profileRes.data) {
-      const prof = profileRes.data as Pick<UserProfile, 'signature_name' | 'signature_title' | 'company_name' | 'full_name'>
+      const prof = profileRes.data as Pick<
+        UserProfile,
+        'signature_name' | 'signature_title' | 'company_name' | 'full_name' | 'logo_url'
+      >
       signatureName = prof.signature_name ?? prof.full_name ?? ''
       signatureTitle = prof.signature_title ?? ''
       companyName = prof.company_name ?? null
+      logoUrl = prof.logo_url ?? null
     }
   } catch {
     // ignore — render proposal without surrounding metadata
@@ -74,12 +80,13 @@ export default async function PublicProposalPage({ params }: PageProps) {
           initialJson={p.content_json ?? null}
           readOnly
         />
-        {(signatureName || companyName) && (
+        {(signatureName || companyName || logoUrl) && (
           <SignatureBlock
             signatureName={signatureName}
             signatureTitle={signatureTitle}
             email=""
             companyName={companyName}
+            logoUrl={logoUrl}
             status={p.status}
           />
         )}
