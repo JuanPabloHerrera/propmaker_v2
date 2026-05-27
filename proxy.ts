@@ -25,16 +25,33 @@ export async function proxy(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/sign-in') ||
-    request.nextUrl.pathname.startsWith('/sign-up')
+  const path = request.nextUrl.pathname
 
-  const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
+  // Routes that don't require auth.
+  // `/reset-password` is included because it's reachable both for the
+  // unauthenticated case (expired link → renders the "request a new
+  // link" state) and the recovery-session case (Supabase issues a
+  // temporary session via the callback). Do NOT redirect logged-in
+  // users away from it — that would block the password update form.
+  const isPublicAuthRoute =
+    path.startsWith('/sign-in') ||
+    path.startsWith('/sign-up') ||
+    path.startsWith('/forgot-password') ||
+    path.startsWith('/reset-password')
 
-  if (!user && !isAuthRoute && !isApiRoute) {
+  // Routes from which a logged-in user should bounce back to the app.
+  const isSignedInBounceRoute =
+    path.startsWith('/sign-in') ||
+    path.startsWith('/sign-up') ||
+    path.startsWith('/forgot-password')
+
+  const isApiRoute = path.startsWith('/api/')
+
+  if (!user && !isPublicAuthRoute && !isApiRoute) {
     return NextResponse.redirect(new URL('/sign-in', request.url))
   }
 
-  if (user && isAuthRoute) {
+  if (user && isSignedInBounceRoute) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 

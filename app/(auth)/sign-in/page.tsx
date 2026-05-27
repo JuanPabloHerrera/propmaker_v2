@@ -52,7 +52,15 @@ export default function SignInPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-sm font-medium text-[#1d1d1f]">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password" className="text-sm font-medium text-[#1d1d1f]">Password</Label>
+                <Link
+                  href="/forgot-password"
+                  className="text-[12px] text-[#6e6e73] hover:text-[#1d1d1f] hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <Input
                 id="password"
                 type="password"
