@@ -47,7 +47,12 @@ export async function proxy(request: NextRequest) {
 
   const isApiRoute = path.startsWith('/api/')
 
-  if (!user && !isPublicAuthRoute && !isApiRoute) {
+  // Public proposal share view — anonymous recipients open /p/[slug].
+  // The page reads the proposal via the `public_slug IS NOT NULL` RLS
+  // policy, so it must work without a session and must NOT be gated.
+  const isPublicProposalRoute = path.startsWith('/p/')
+
+  if (!user && !isPublicAuthRoute && !isPublicProposalRoute && !isApiRoute) {
     return NextResponse.redirect(new URL('/sign-in', request.url))
   }
 
