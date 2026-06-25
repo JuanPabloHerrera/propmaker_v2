@@ -50,7 +50,11 @@ export default function QAPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  async function streamChat(userMessage: string | undefined, history: Message[]) {
+  async function streamChat(
+    userMessage: string | undefined,
+    history: Message[],
+    opts?: { generate?: boolean },
+  ) {
     setStreaming(true)
     setStreamingText('')
 
@@ -59,53 +63,63 @@ export default function QAPage() {
       : history
     if (userMessage) setMessages(next)
 
-    const res = await fetch(`/api/meetings/${id}/proposal/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userMessage: userMessage ?? null }),
-    })
-
-    if (!res.body) {
-      setStreaming(false)
-      return
-    }
-
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
     let assistantText = ''
     let proposal: string | null = null
+    let errorMessage: string | null = null
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      const chunk = decoder.decode(value)
-      for (const line of chunk.split('\n')) {
-        if (!line.startsWith('data: ')) continue
-        const data = line.slice(6)
-        if (data === '[DONE]') break
-        try {
-          const parsed = JSON.parse(data)
-          if (parsed.text) {
-            assistantText += parsed.text
-            setStreamingText(assistantText)
+    try {
+      const res = await fetch(`/api/meetings/${id}/proposal/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userMessage: userMessage ?? null,
+          generate: opts?.generate ?? false,
+        }),
+      })
+
+      if (!res.body) return
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value)
+        for (const line of chunk.split('\n')) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(6)
+          if (data === '[DONE]') break
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.text) {
+              assistantText += parsed.text
+              setStreamingText(assistantText)
+            }
+            if (parsed.proposal) proposal = parsed.proposal
+            if (parsed.error) errorMessage = parsed.error
+          } catch {
+            /* malformed SSE */
           }
-          if (parsed.proposal) proposal = parsed.proposal
-        } catch {
-          /* malformed SSE */
         }
       }
+    } catch {
+      errorMessage = 'Connection lost while talking to the agent.'
+    } finally {
+      setStreamingText('')
+      setStreaming(false)
     }
 
     const clean = assistantText.replace('[READY_TO_GENERATE]', '').trim()
-    setMessages((prev) => [...prev, { role: 'assistant', content: clean }])
-    setStreamingText('')
-    setStreaming(false)
+    if (clean) setMessages((prev) => [...prev, { role: 'assistant', content: clean }])
 
-    if (proposal) {
-      // Proposal generated mid-stream — head to proposal page.
+    if (errorMessage) {
+      toast.error(errorMessage)
+    } else if (proposal) {
+      // Proposal generated — head to the proposal page.
       router.push(`/meetings/${id}/proposal`)
     } else if (assistantText.includes('[READY_TO_GENERATE]')) {
-      // Agent has signalled it's ready; surface generate button
+      // Agent signalled it's ready; surface generate button
       toast.success('Ready to generate proposal')
     }
   }
@@ -118,15 +132,23 @@ export default function QAPage() {
   }
 
   async function generateNow() {
-    if (generating) return
+    if (generating || streaming) return
     setGenerating(true)
-    // Send a sentinel message that asks the agent to wrap up.
-    await streamChat(
-      'I have answered enough — please generate the proposal now.',
-      messages,
-    )
-    setGenerating(false)
+    try {
+      // Deterministic: tell the server to generate now, regardless of how
+      // many questions were answered. No sentinel message — the server
+      // builds the proposal from the existing context.
+      await streamChat(undefined, messages, { generate: true })
+    } finally {
+      setGenerating(false)
+    }
   }
+
+  // Stable callback so DetectedProductsCard's mount-time detection effect
+  // doesn't see a new function identity each render (which would loop).
+  const handleMeetingChange = React.useCallback((next: Partial<Meeting>) => {
+    setMeeting((m) => (m ? ({ ...m, ...next } as Meeting) : m))
+  }, [])
 
   // Count completed assistant messages as the question index.
   const askedCount = messages.filter((m) => m.role === 'assistant').length
@@ -174,9 +196,7 @@ export default function QAPage() {
           meetingId={id}
           initialAttachedIds={meeting.attached_product_ids ?? []}
           initialDetectedIds={meeting.detected_product_ids ?? []}
-          onMeetingChange={(next) =>
-            setMeeting((m) => (m ? ({ ...m, ...next } as Meeting) : m))
-          }
+          onMeetingChange={handleMeetingChange}
         />
       </div>
 

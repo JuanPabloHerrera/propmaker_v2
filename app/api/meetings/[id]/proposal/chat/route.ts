@@ -20,7 +20,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   if (!meeting) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { userMessage } = await request.json()
+  const { userMessage, generate } = await request.json()
 
   // Build partitioned transcripts (browser = primary, recall = fallback)
   const { data: segments } = await supabase
@@ -97,14 +97,84 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     chatHistory.push({ role: 'user', content: userMessage })
   }
 
+  const encoder = new TextEncoder()
+  const sse = (obj: unknown) => encoder.encode(`data: ${JSON.stringify(obj)}\n\n`)
+
+  // Generate the proposal markdown, persist it (upsert), return the markdown.
+  // Shared by the deterministic "generate" path and the [READY_TO_GENERATE] path.
+  const persistProposal = async (
+    historyForGen: Array<{ role: 'user' | 'assistant'; content: string }>,
+  ): Promise<string> => {
+    const proposalMarkdown = await generateProposal({
+      browserTranscript,
+      recallTranscript,
+      notesText,
+      products,
+      chatHistory: historyForGen,
+      liveChatHistory,
+      meetingType: meeting.meeting_type as MeetingType,
+    })
+    const content_json = markdownToTiptap(proposalMarkdown)
+    const { data: existing } = await supabase
+      .from('proposals')
+      .select('id')
+      .eq('meeting_id', id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (existing) {
+      await supabase.from('proposals').update({ content_json }).eq('id', existing.id)
+    } else {
+      await supabase.from('proposals').insert({
+        meeting_id: id,
+        user_id: user.id,
+        content_json,
+        status: 'draft',
+      })
+    }
+    return proposalMarkdown
+  }
+
+  // Deterministic generation — bypass the Q&A model entirely and build the
+  // proposal from whatever context exists. Triggered by "Skip questions" /
+  // "Generate proposal now".
+  if (generate) {
+    return new Response(
+      new ReadableStream({
+        async start(controller) {
+          try {
+            const proposalMarkdown = await persistProposal(chatHistory)
+            controller.enqueue(sse({ proposal: proposalMarkdown }))
+          } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to generate proposal'
+            console.error('[proposal/chat generate]', message)
+            controller.enqueue(sse({ error: message }))
+          }
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        },
+      }),
+      {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
+      },
+    )
+  }
+
   // Replay last assistant message if user just reopened the page
-  if (!userMessage && chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'assistant') {
+  if (
+    !userMessage &&
+    !generate &&
+    chatHistory.length > 0 &&
+    chatHistory[chatHistory.length - 1].role === 'assistant'
+  ) {
     const lastAssistantMsg = chatHistory[chatHistory.length - 1].content
-    const encoder = new TextEncoder()
     return new Response(
       new ReadableStream({
         start(controller) {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: lastAssistantMsg })}\n\n`))
+          controller.enqueue(sse({ text: lastAssistantMsg }))
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
           controller.close()
         },
@@ -123,7 +193,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   })
 
   let fullText = ''
-  const encoder = new TextEncoder()
 
   const readableStream = new ReadableStream({
     async start(controller) {
@@ -142,45 +211,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       })
 
       if (fullText.includes('[READY_TO_GENERATE]')) {
-        const cleanedHistory = [...chatHistory, { role: 'assistant' as const, content: fullText }]
-        const proposalMarkdown = await generateProposal({
-          browserTranscript,
-          recallTranscript,
-          notesText,
-          products,
-          chatHistory: cleanedHistory,
-          liveChatHistory,
-          meetingType: meeting.meeting_type as MeetingType,
-        })
-
         // Persist before signalling the client so the proposal page can
         // read it on first load — the QA page redirects immediately and
         // the markdown would otherwise vanish.
-        const content_json = markdownToTiptap(proposalMarkdown)
-        const { data: existing } = await supabase
-          .from('proposals')
-          .select('id')
-          .eq('meeting_id', id)
-          .eq('user_id', user.id)
-          .maybeSingle()
-
-        if (existing) {
-          await supabase
-            .from('proposals')
-            .update({ content_json })
-            .eq('id', existing.id)
-        } else {
-          await supabase.from('proposals').insert({
-            meeting_id: id,
-            user_id: user.id,
-            content_json,
-            status: 'draft',
-          })
-        }
-
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ proposal: proposalMarkdown })}\n\n`)
-        )
+        const proposalMarkdown = await persistProposal([
+          ...chatHistory,
+          { role: 'assistant' as const, content: fullText },
+        ])
+        controller.enqueue(sse({ proposal: proposalMarkdown }))
       }
 
       controller.enqueue(encoder.encode('data: [DONE]\n\n'))

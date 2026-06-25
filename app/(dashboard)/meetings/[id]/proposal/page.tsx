@@ -221,7 +221,7 @@ function ProposalPageSkeleton() {
         {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton
             key={i}
-            style={{ height: 10, width: `${50 + Math.random() * 40}%`, marginBottom: 12 }}
+            style={{ height: 10, width: `${50 + ((i * 17) % 40)}%`, marginBottom: 12 }}
           />
         ))}
       </div>

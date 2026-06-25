@@ -63,15 +63,17 @@ export function DetectedProductsCard({
     }
   }, [meetingId, onMeetingChange])
 
-  // Kick off detection once on mount.
+  // Kick off detection exactly once on mount. The ref guard is essential:
+  // runDetect calls onMeetingChange → setMeeting on the parent, which would
+  // re-render and (if this effect were keyed on runDetect) re-trigger
+  // detection forever. Manual re-runs go through the "Re-detect" button.
+  const didDetectRef = React.useRef(false)
   React.useEffect(() => {
+    if (didDetectRef.current) return
+    didDetectRef.current = true
     void runDetect()
-    // initialDetectedIds is intentionally not used to bootstrap — we
-    // always re-run on mount so the user sees fresh hits after editing
-    // the catalog or notes. The seed prop is just there in case we
-    // want to render cached values during the spinner in a future pass.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runDetect])
+  }, [])
 
   async function patchMeeting(update: Partial<Meeting>) {
     const res = await fetch(`/api/meetings/${meetingId}`, {
