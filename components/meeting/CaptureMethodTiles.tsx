@@ -21,27 +21,22 @@ export function CaptureMethodTiles({
   urlError,
   urlInputRef,
 }: Props) {
-  // Map UI tiles to capture_mode: "Bot joins" → 'recall', "Local mic" → 'browser'.
-  // "both" is an advanced option; we expose it via a small chip below.
-  const isRecall = value === 'recall' || value === 'both'
-  const isBrowser = value === 'browser' || value === 'both'
-
-  function pickRecall() {
-    onChange(value === 'browser' ? 'recall' : value === 'both' ? 'browser' : 'recall')
-  }
-  function pickBrowser() {
-    onChange(value === 'recall' ? 'browser' : value === 'both' ? 'recall' : 'browser')
-  }
+  // Two capture modes:
+  //   Conferencing → 'both'  = Recall.ai bot joins the call + local mic.
+  //   Local mic    → 'browser' = this Mac's microphone only.
+  // Legacy 'recall' rows render as conferencing.
+  const isConferencing = value === 'both' || value === 'recall'
+  const isBrowser = value === 'browser'
 
   return (
     <div className="grid grid-cols-2 gap-2.5">
       <Tile
-        active={isRecall}
-        onClick={pickRecall}
-        title="Bot joins the call"
-        description="PropMaker dials into Zoom / Meet / Teams as a participant."
+        active={isConferencing}
+        onClick={() => onChange('both')}
+        title="Conferencing"
+        description="A bot joins Zoom / Meet / Teams and your mic is captured too."
       >
-        {isRecall && (
+        {isConferencing && (
           <div className="mt-2">
             <div
               className="flex items-center gap-1.5 mono-num"
@@ -78,9 +73,9 @@ export function CaptureMethodTiles({
       </Tile>
       <Tile
         active={isBrowser}
-        onClick={pickBrowser}
+        onClick={() => onChange('browser')}
         title="Local mic"
-        description="Capture audio from this Mac. In-person or any call."
+        description="This Mac's microphone only. For in-person meetings."
       >
         {isBrowser && (
           <div className="flex items-center gap-1.5 mt-2" style={{ fontSize: 11, color: 'var(--ink-3)' }}>

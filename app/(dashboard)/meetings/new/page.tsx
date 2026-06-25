@@ -356,9 +356,11 @@ export default function NewMeetingPage() {
             <Icon name="mic" />
             {loading
               ? 'Setting up…'
-              : joinMode === 'now'
-                ? 'Start meeting & let agent join'
-                : 'Schedule meeting'}
+              : joinMode === 'schedule'
+                ? 'Schedule meeting'
+                : captureMode === 'browser'
+                  ? 'Start meeting'
+                  : 'Start meeting & let agent join'}
           </button>
         </div>
       </div>

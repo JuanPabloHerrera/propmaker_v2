@@ -145,9 +145,9 @@ export const MEETING_STATUS_LABELS: Record<MeetingStatus, string> = {
 }
 
 export const CAPTURE_MODE_LABELS: Record<CaptureMode, string> = {
-  browser: 'Browser audio',
-  recall: 'Recall.ai bot',
-  both: 'Browser + bot',
+  browser: 'Local mic',
+  recall: 'Conferencing (bot)',
+  both: 'Conferencing',
 }
 
 export const PRICE_UNIT_LABELS: Record<PriceUnit, string> = {

@@ -15,7 +15,6 @@ interface Props {
   onToggleRight: () => void
   onEnd: () => void
   ending: boolean
-  micSlot: React.ReactNode
   segmentCount: number
 }
 
@@ -42,7 +41,6 @@ export function MeetingToolbar({
   onToggleRight,
   onEnd,
   ending,
-  micSlot,
   segmentCount,
 }: Props) {
   const router = useRouter()
@@ -154,8 +152,6 @@ export function MeetingToolbar({
           ))}
         </div>
       )}
-
-      {!isCompleted && micSlot}
 
       {!isCompleted && (
         <button

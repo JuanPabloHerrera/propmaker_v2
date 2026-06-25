@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { TranscriptPanel } from '@/components/meeting/TranscriptPanel'
 import { LiveChatPanel } from '@/components/meeting/LiveChatPanel'
-import { AudioCaptureButton } from '@/components/meeting/AudioCaptureButton'
+import { useMicCapture } from '@/components/meeting/useMicCapture'
 import { NotesPad } from '@/components/meeting/NotesPad'
 import { CollapsiblePanel, CollapsedTab } from '@/components/meeting/CollapsiblePanel'
 import { MeetingToolbar } from '@/components/meeting/MeetingToolbar'
@@ -29,6 +29,27 @@ export default function LiveMeetingPage() {
   const [rightOpen, setRightOpen] = useState(true)
   const [elapsed, setElapsed] = useState(0)
   const startedAtRef = useRef<number | null>(null)
+
+  const isCompleted = meeting?.status === 'completed'
+
+  // Local microphone capture (Deepgram). Headless — auto-started/stopped with
+  // the meeting below; there is no manual button.
+  const { start: startCapture, stop: stopCapture } = useMicCapture({
+    meetingId: id,
+    onInterim: setInterimText,
+    onFinal: async (text, speaker) => {
+      setInterimText('')
+      await activateMeetingIfNeeded()
+      await supabase.from('transcript_segments').insert({
+        meeting_id: id,
+        speaker,
+        text,
+        start_time: Date.now() / 1000,
+        source: 'browser',
+      })
+    },
+    onError: (message) => toast.error(message),
+  })
 
   useEffect(() => {
     const l = window.localStorage.getItem(LS_LEFT)
@@ -121,6 +142,7 @@ export default function LiveMeetingPage() {
 
   async function endMeeting() {
     setEnding(true)
+    await stopCapture() // flush the final transcript + release the mic
     if (meeting?.recall_bot_id) {
       await fetch(`/api/meetings/${id}/bot`, { method: 'DELETE' })
     } else {
@@ -156,6 +178,23 @@ export default function LiveMeetingPage() {
     return () => clearInterval(interval)
   }, [meeting?.recall_bot_id, meeting?.status, id, supabase])
 
+  // Auto-start local mic capture once the meeting loads, for the modes that use
+  // the browser mic ('browser' = local mic, 'both' = conferencing bot + mic).
+  // Stops on unmount or when the meeting completes. (Recall-only meetings don't
+  // capture the local mic.) Keyed on id/capture_mode/isCompleted so realtime
+  // status flips (pending→active) don't restart capture.
+  useEffect(() => {
+    if (!meeting || isCompleted) return
+    const usesBrowserMic = meeting.capture_mode === 'browser' || meeting.capture_mode === 'both'
+    if (!usesBrowserMic) return
+    void startCapture()
+    // Local-mic-only meetings have no bot to flip status, so activate now → REC.
+    if (meeting.capture_mode === 'browser') void activateMeetingIfNeeded()
+    return () => {
+      void stopCapture()
+    }
+  }, [meeting?.id, meeting?.capture_mode, isCompleted, startCapture, stopCapture])
+
   if (!meeting) {
     return (
       <div
@@ -179,7 +218,7 @@ export default function LiveMeetingPage() {
             {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton
                 key={i}
-                style={{ height: 10, width: `${60 + Math.random() * 35}%`, marginBottom: 10 }}
+                style={{ height: 10, width: `${60 + ((i * 13) % 35)}%`, marginBottom: 10 }}
               />
             ))}
           </div>
@@ -199,26 +238,7 @@ export default function LiveMeetingPage() {
     )
   }
 
-  const isCompleted = meeting.status === 'completed'
   const isRecording = meeting.status === 'active'
-
-  const micButton = isCompleted ? null : (
-    <AudioCaptureButton
-      meetingId={id}
-      onInterim={setInterimText}
-      onFinal={async (text, speaker) => {
-        setInterimText('')
-        await activateMeetingIfNeeded()
-        await supabase.from('transcript_segments').insert({
-          meeting_id: id,
-          speaker,
-          text,
-          start_time: Date.now() / 1000,
-          source: 'browser',
-        })
-      }}
-    />
-  )
 
   return (
     <div className="flex flex-col h-screen lg-shell">
@@ -231,7 +251,6 @@ export default function LiveMeetingPage() {
         onToggleRight={() => setRightOpen((v) => !v)}
         onEnd={endMeeting}
         ending={ending}
-        micSlot={micButton}
         segmentCount={segments.length}
       />
 
