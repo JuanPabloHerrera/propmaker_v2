@@ -189,6 +189,8 @@ export default function QAPage() {
         questionIndex={questionIndex}
         totalQuestions={EXPECTED_QUESTIONS}
         onSkip={generateNow}
+        disabled={streaming || generating}
+        busy={generating}
       />
 
       <div style={{ padding: '12px 22% 0' }}>

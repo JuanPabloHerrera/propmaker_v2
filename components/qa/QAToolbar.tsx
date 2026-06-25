@@ -8,9 +8,11 @@ interface Props {
   questionIndex: number
   totalQuestions: number
   onSkip: () => void
+  disabled?: boolean
+  busy?: boolean
 }
 
-export function QAToolbar({ meeting, questionIndex, totalQuestions, onSkip }: Props) {
+export function QAToolbar({ meeting, questionIndex, totalQuestions, onSkip, disabled, busy }: Props) {
   return (
     <>
       <div
@@ -41,7 +43,8 @@ export function QAToolbar({ meeting, questionIndex, totalQuestions, onSkip }: Pr
         <button
           type="button"
           onClick={onSkip}
-          className="font-medium"
+          disabled={disabled}
+          className="font-medium disabled:opacity-50"
           style={{
             height: 24,
             padding: '0 9px',
@@ -49,9 +52,10 @@ export function QAToolbar({ meeting, questionIndex, totalQuestions, onSkip }: Pr
             fontSize: 11.5,
             color: 'var(--ink-2)',
             background: 'transparent',
+            cursor: disabled ? 'not-allowed' : 'pointer',
           }}
         >
-          Skip questions
+          {busy ? 'Generating…' : 'Skip questions'}
         </button>
       </div>
 
