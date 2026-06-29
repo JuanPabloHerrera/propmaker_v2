@@ -50,6 +50,7 @@ each file in [supabase/migrations/](supabase/migrations/) in order:
 005_design_pivot.sql        ← user_profiles, attendee/context/deal columns, sharing
 006_user_logo.sql           ← user_profiles.logo_url + user-logos Storage bucket
 007_share_open_tracking.sql ← proposal open tracking
+008_realtime_live_chat.sql  ← adds live_meeting_chat to the Realtime publication
 ```
 
 Then:

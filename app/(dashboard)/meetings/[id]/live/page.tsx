@@ -9,6 +9,7 @@ import { useMicCapture } from '@/components/meeting/useMicCapture'
 import { NotesPad } from '@/components/meeting/NotesPad'
 import { CollapsiblePanel, CollapsedTab } from '@/components/meeting/CollapsiblePanel'
 import { MeetingToolbar } from '@/components/meeting/MeetingToolbar'
+import { CaptureStatusBar } from '@/components/meeting/CaptureStatusBar'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Meeting, TranscriptSegment } from '@/types'
 import { toast } from 'sonner'
@@ -28,13 +29,22 @@ export default function LiveMeetingPage() {
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [elapsed, setElapsed] = useState(0)
+  const [joining, setJoining] = useState(false)
   const startedAtRef = useRef<number | null>(null)
 
   const isCompleted = meeting?.status === 'completed'
+  const isConferencing =
+    meeting?.capture_mode === 'both' || meeting?.capture_mode === 'recall'
 
-  // Local microphone capture (Deepgram). Headless — auto-started/stopped with
-  // the meeting below; there is no manual button.
-  const { start: startCapture, stop: stopCapture } = useMicCapture({
+  // Local microphone capture (Deepgram). Auto-started/stopped with the meeting
+  // below; the CaptureStatusBar offers a manual "Enable microphone" fallback.
+  const {
+    start: startCapture,
+    stop: stopCapture,
+    active: micActive,
+    status: micStatus,
+    error: micError,
+  } = useMicCapture({
     meetingId: id,
     onInterim: setInterimText,
     onFinal: async (text, speaker) => {
@@ -91,7 +101,10 @@ export default function LiveMeetingPage() {
           filter: `meeting_id=eq.${id}`,
         },
         (payload) => {
-          setSegments((prev) => [...prev, payload.new as TranscriptSegment])
+          const seg = payload.new as TranscriptSegment
+          setSegments((prev) =>
+            prev.some((s) => s.id === seg.id) ? prev : [...prev, seg],
+          )
         },
       )
       .subscribe()
@@ -164,9 +177,30 @@ export default function LiveMeetingPage() {
     })
   }
 
-  // Poll transcript_segments every 5s while a bot is active — Realtime fallback.
+  // Create/join the Recall bot for a conferencing meeting that doesn't have one
+  // yet (failed initial join, or a scheduled meeting being started now).
+  async function joinCall() {
+    setJoining(true)
+    try {
+      const res = await fetch(`/api/meetings/${id}/bot`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(`Bot failed to join: ${data.error ?? 'Unknown error'}`)
+        return
+      }
+      toast.success('Bot is joining the meeting…')
+      await fetchInitialData() // pick up recall_bot_id + status='active'
+    } finally {
+      setJoining(false)
+    }
+  }
+
+  // Poll transcript_segments every 5s while the meeting is active — a safety net
+  // for any capture mode in case Supabase Realtime isn't delivering (e.g. not
+  // enabled on the project). The full re-select is the source of truth, so it
+  // also reconciles any duplicates from the Realtime append above.
   useEffect(() => {
-    if (!meeting?.recall_bot_id || meeting.status !== 'active') return
+    if (meeting?.status !== 'active') return
     const interval = setInterval(async () => {
       const { data } = await supabase
         .from('transcript_segments')
@@ -176,7 +210,7 @@ export default function LiveMeetingPage() {
       if (data) setSegments(data as TranscriptSegment[])
     }, 5000)
     return () => clearInterval(interval)
-  }, [meeting?.recall_bot_id, meeting?.status, id, supabase])
+  }, [meeting?.status, id, supabase])
 
   // Auto-start local mic capture once the meeting loads, for the modes that use
   // the browser mic ('browser' = local mic, 'both' = conferencing bot + mic).
@@ -254,6 +288,20 @@ export default function LiveMeetingPage() {
         segmentCount={segments.length}
       />
 
+      {!isCompleted && (
+        <CaptureStatusBar
+          captureMode={meeting.capture_mode}
+          micStatus={micStatus}
+          micError={micError}
+          onEnableMic={() => void startCapture()}
+          isConferencing={isConferencing}
+          botJoined={Boolean(meeting.recall_bot_id && meeting.status === 'active')}
+          hasMeetingUrl={Boolean(meeting.meeting_url)}
+          joining={joining}
+          onJoinBot={joinCall}
+        />
+      )}
+
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {leftOpen ? (
           <CollapsiblePanel
@@ -267,6 +315,10 @@ export default function LiveMeetingPage() {
               interimText={interimText}
               isRecording={isRecording}
               elapsedSeconds={elapsed}
+              botActive={Boolean(
+                isConferencing && meeting.recall_bot_id && meeting.status === 'active',
+              )}
+              micActive={micActive}
             />
           </CollapsiblePanel>
         ) : (

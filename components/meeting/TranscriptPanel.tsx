@@ -12,6 +12,10 @@ interface Props {
   interimText?: string
   isRecording?: boolean
   elapsedSeconds?: number
+  /** A conferencing bot is connected and capturing the call audio. */
+  botActive?: boolean
+  /** The local microphone capture is running. */
+  micActive?: boolean
 }
 
 function fmtTime(seconds: number): string {
@@ -25,6 +29,8 @@ export function TranscriptPanel({
   interimText,
   isRecording = false,
   elapsedSeconds = 0,
+  botActive = false,
+  micActive = false,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -59,10 +65,18 @@ export function TranscriptPanel({
         {segments.length === 0 && !interimText ? (
           <div className="flex flex-col items-center justify-center text-center py-12">
             <div className="text-[12px]" style={{ color: 'var(--ink-3)' }}>
-              Waiting for audio…
+              {botActive
+                ? 'Waiting for the bot to start transcribing…'
+                : micActive
+                  ? 'Listening…'
+                  : 'Waiting for audio…'}
             </div>
             <div className="text-[11px] mt-1" style={{ color: 'var(--ink-3)' }}>
-              Start the mic from the toolbar above.
+              {botActive
+                ? 'The live transcript fills in as people speak on the call.'
+                : micActive
+                  ? 'The live transcript fills in as you speak.'
+                  : 'Capture starts automatically once the meeting is active.'}
             </div>
           </div>
         ) : (

@@ -38,6 +38,9 @@ export default function NewMeetingPage() {
   const [products, setProducts] = React.useState<Product[]>([])
   const [attachedIds, setAttachedIds] = React.useState<string[]>([])
   const [loading, setLoading] = React.useState(false)
+  // Remembers a meeting created in a prior attempt whose bot failed to join, so
+  // retrying reuses it instead of creating duplicate meetings.
+  const [createdMeetingId, setCreatedMeetingId] = React.useState<string | null>(null)
   const [errors, setErrors] = React.useState<FormErrors>({})
   const titleRef = React.useRef<HTMLInputElement>(null)
   const scheduledRef = React.useRef<HTMLInputElement>(null)
@@ -112,29 +115,51 @@ export default function NewMeetingPage() {
       body.scheduled_at = new Date(scheduledAt).toISOString()
     }
 
-    const res = await fetch('/api/meetings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      setLoading(false)
-      toast.error(data.error ?? 'Failed to create meeting')
-      return
+    // Reuse a meeting from a prior failed attempt (and apply any edits) instead
+    // of creating a duplicate; otherwise create a fresh one.
+    let meetingId = createdMeetingId
+    if (meetingId) {
+      const patchRes = await fetch(`/api/meetings/${meetingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!patchRes.ok) {
+        const patchData = await patchRes.json().catch(() => ({}))
+        setLoading(false)
+        toast.error(patchData.error ?? 'Failed to update meeting')
+        return
+      }
+    } else {
+      const res = await fetch('/api/meetings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setLoading(false)
+        toast.error(data.error ?? 'Failed to create meeting')
+        return
+      }
+      meetingId = data.id as string
     }
 
     if (joinMode === 'now') {
       if (captureMode === 'recall' || captureMode === 'both') {
-        const botRes = await fetch(`/api/meetings/${data.id}/bot`, { method: 'POST' })
-        const botData = await botRes.json()
+        const botRes = await fetch(`/api/meetings/${meetingId}/bot`, { method: 'POST' })
+        const botData = await botRes.json().catch(() => ({}))
         if (!botRes.ok) {
-          toast.error(`Bot failed to join: ${botData.error ?? 'Unknown error'}`)
-        } else {
-          toast.success('Bot is joining the meeting…')
+          // Keep the user here with the meeting saved so they can fix the URL /
+          // credentials and retry — don't drop them on a botless live page.
+          setCreatedMeetingId(meetingId)
+          setLoading(false)
+          toast.error(`Bot failed to join: ${botData.error ?? 'Unknown error'}. Fix the link and try again.`)
+          return
         }
+        toast.success('Bot is joining the meeting…')
       }
-      router.push(`/meetings/${data.id}/live`)
+      router.push(`/meetings/${meetingId}/live`)
     } else {
       setLoading(false)
       toast.success('Meeting scheduled.')
