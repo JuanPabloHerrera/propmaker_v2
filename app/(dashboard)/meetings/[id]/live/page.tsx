@@ -178,8 +178,8 @@ export default function LiveMeetingPage() {
   }
 
   // Create/join the Recall bot for a conferencing meeting that doesn't have one
-  // yet (failed initial join, or a scheduled meeting being started now).
-  async function joinCall() {
+  // yet (auto-join below, a failed initial join, or a scheduled meeting).
+  const joinCall = useCallback(async () => {
     setJoining(true)
     try {
       const res = await fetch(`/api/meetings/${id}/bot`, { method: 'POST' })
@@ -193,7 +193,27 @@ export default function LiveMeetingPage() {
     } finally {
       setJoining(false)
     }
-  }
+  }, [id, fetchInitialData])
+
+  // Auto-join the bot for a conferencing meeting that has a URL but no bot yet
+  // (no manual button needed). Guarded per meeting id so it can't double-create;
+  // the CaptureStatusBar "Join the call" button remains as a manual retry.
+  const autoJoinedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!meeting || isCompleted) return
+    const isConf = meeting.capture_mode === 'both' || meeting.capture_mode === 'recall'
+    if (!isConf || !meeting.meeting_url || meeting.recall_bot_id) return
+    if (autoJoinedRef.current === meeting.id) return
+    autoJoinedRef.current = meeting.id
+    void joinCall()
+  }, [
+    meeting?.id,
+    meeting?.capture_mode,
+    meeting?.meeting_url,
+    meeting?.recall_bot_id,
+    isCompleted,
+    joinCall,
+  ])
 
   // Poll transcript_segments every 5s while the meeting is active — a safety net
   // for any capture mode in case Supabase Realtime isn't delivering (e.g. not

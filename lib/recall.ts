@@ -48,9 +48,20 @@ export interface RecallBot {
   }>
 }
 
+// Public base URL that Recall posts transcript webhooks to. On Vercel, always
+// use the stable production domain so webhooks reach the live deployment even if
+// NEXT_PUBLIC_APP_URL is stale (e.g. a leftover ngrok dev tunnel). Locally,
+// VERCEL_PROJECT_PRODUCTION_URL is absent so dev falls back to NEXT_PUBLIC_APP_URL.
+function publicBaseUrl(): string {
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  }
+  return process.env.NEXT_PUBLIC_APP_URL ?? ''
+}
+
 export async function createBot(meetingUrl: string, meetingId: string): Promise<RecallBot> {
   const base = await getApiBase()
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
+  const appUrl = publicBaseUrl()
   const webhookUrl = `${appUrl}/api/webhooks/recall`
 
   console.log(`[recall] createBot — APP_URL=${appUrl} webhook=${webhookUrl}`)
