@@ -23,6 +23,13 @@ Mac-app-style AI meeting intelligence + proposal generator. Captures audio in th
 
 Production hosting: Vercel, auto-deploy from `main`.
 
+> **Working agreement — always ship.** As soon as a change is complete and the
+> build is green, commit it and `git push origin main` to trigger the Vercel
+> production deploy. Don't leave finished changes sitting uncommitted. The
+> bottom-right **version pill** (`v{version} · {git sha}`, links to the commit on
+> GitHub) shows the deployed commit SHA so you can confirm prod is on the latest
+> push — see `components/ui/version-pill.tsx` + `NEXT_PUBLIC_GIT_SHA` in `next.config.ts`.
+
 - Env vars live in Vercel project settings → Environment Variables. `.env.example` lists every required name.
 - `NEXT_PUBLIC_APP_URL` **must** equal the public Vercel URL (or custom domain). Recall.ai webhook URLs are built from this value at bot-creation time in `lib/recall.ts`.
 - Supabase migrations are **not** applied automatically. Run each new migration via Supabase dashboard → SQL Editor (or `supabase db push` via the CLI) against the production project before deploying code that depends on it.
