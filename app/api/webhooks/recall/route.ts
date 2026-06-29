@@ -1,5 +1,5 @@
 import { createServiceClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { generateSuggestions } from '@/lib/claude'
 import { getTranscriptById } from '@/lib/recall'
 import type { MeetingType, TranscriptSegment } from '@/types'
@@ -33,6 +33,16 @@ export async function POST(request: Request) {
 
   const meetingId: string = meeting.id
 
+  // --- Partial (interim) transcript: stream live word-by-word, don't persist ---
+  if (eventType === 'transcript.partial_data') {
+    const words: Array<{ text: string }> = body.data?.data?.words ?? []
+    const text = words.map((w) => w.text).join(' ').trim()
+    if (text) {
+      await supabase.from('meetings').update({ live_partial: text }).eq('id', meetingId)
+    }
+    return NextResponse.json({ ok: true })
+  }
+
   // --- Real-time transcript event ---
   if (eventType === 'transcript.data' || body.transcript) {
     // realtime_endpoints format: { data: { data: { words, participant }, is_final } }
@@ -56,42 +66,49 @@ export async function POST(request: Request) {
         source: 'recall',
       })
 
-      // Check total word count to decide whether to regenerate suggestions
-      const { count } = await supabase
-        .from('transcript_segments')
-        .select('id', { count: 'exact', head: true })
-        .eq('meeting_id', meetingId)
+      // The finalized utterance is now a segment — clear the live interim line.
+      await supabase.from('meetings').update({ live_partial: null }).eq('id', meetingId)
 
-      const { data: lastSuggestion } = await supabase
-        .from('suggestions')
-        .select('created_at')
-        .eq('meeting_id', meetingId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-
-      const { data: newSegments } = await supabase
-        .from('transcript_segments')
-        .select('text')
-        .eq('meeting_id', meetingId)
-        .gt('created_at', lastSuggestion?.created_at ?? '1970-01-01')
-
-      const newWordCount = newSegments?.reduce((acc, s) => acc + s.text.split(' ').length, 0) ?? 0
-
-      if (newWordCount >= SUGGESTION_WORD_THRESHOLD || count === 1) {
-        const { data: allSegments } = await supabase
+      // Regenerate suggestions off the response path: the Claude call must not
+      // block this webhook, or Recall (which delivers webhooks serially) stalls
+      // the transcript stream and it arrives in bursts.
+      after(async () => {
+        const { count } = await supabase
           .from('transcript_segments')
-          .select('speaker, text')
+          .select('id', { count: 'exact', head: true })
           .eq('meeting_id', meetingId)
-          .order('created_at', { ascending: true })
 
-        const transcript = (allSegments as TranscriptSegment[] | null)
-          ?.map((s) => `${s.speaker ?? 'Speaker'}: ${s.text}`)
-          .join('\n') ?? ''
+        const { data: lastSuggestion } = await supabase
+          .from('suggestions')
+          .select('created_at')
+          .eq('meeting_id', meetingId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
 
-        const questions = await generateSuggestions(transcript, meeting.meeting_type as MeetingType)
-        await supabase.from('suggestions').insert({ meeting_id: meetingId, questions })
-      }
+        const { data: newSegments } = await supabase
+          .from('transcript_segments')
+          .select('text')
+          .eq('meeting_id', meetingId)
+          .gt('created_at', lastSuggestion?.created_at ?? '1970-01-01')
+
+        const newWordCount = newSegments?.reduce((acc, s) => acc + s.text.split(' ').length, 0) ?? 0
+
+        if (newWordCount >= SUGGESTION_WORD_THRESHOLD || count === 1) {
+          const { data: allSegments } = await supabase
+            .from('transcript_segments')
+            .select('speaker, text')
+            .eq('meeting_id', meetingId)
+            .order('created_at', { ascending: true })
+
+          const transcript = (allSegments as TranscriptSegment[] | null)
+            ?.map((s) => `${s.speaker ?? 'Speaker'}: ${s.text}`)
+            .join('\n') ?? ''
+
+          const questions = await generateSuggestions(transcript, meeting.meeting_type as MeetingType)
+          await supabase.from('suggestions').insert({ meeting_id: meetingId, questions })
+        }
+      })
     }
   }
 
@@ -119,13 +136,15 @@ export async function POST(request: Request) {
         await supabase.from('transcript_segments').insert(rows)
 
         const fullText = rows.map((r) => `${r.speaker}: ${r.text}`).join('\n')
-        const { data: mtg } = await supabase.from('meetings').select('meeting_type').eq('id', meetingId).single()
-        const questions = await generateSuggestions(fullText, (mtg?.meeting_type ?? 'consulting') as MeetingType)
-        await supabase.from('suggestions').insert({ meeting_id: meetingId, questions })
+        after(async () => {
+          const { data: mtg } = await supabase.from('meetings').select('meeting_type').eq('id', meetingId).single()
+          const questions = await generateSuggestions(fullText, (mtg?.meeting_type ?? 'consulting') as MeetingType)
+          await supabase.from('suggestions').insert({ meeting_id: meetingId, questions })
+        })
       }
     }
 
-    await supabase.from('meetings').update({ status: 'completed' }).eq('id', meetingId)
+    await supabase.from('meetings').update({ status: 'completed', live_partial: null }).eq('id', meetingId)
   }
 
   // --- Bot status events ---
@@ -135,7 +154,7 @@ export async function POST(request: Request) {
     if (['done', 'call_ended', 'bot.done'].includes(statusCode)) {
       await supabase
         .from('meetings')
-        .update({ status: 'completed' })
+        .update({ status: 'completed', live_partial: null })
         .eq('id', meetingId)
     }
   }

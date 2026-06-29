@@ -18,15 +18,15 @@ export async function generateSuggestions(
     model: 'claude-sonnet-4-6',
     max_tokens: 512,
     system: `You are a meeting coach helping a consultant run a ${label} discovery call.
-Given the transcript so far, suggest 3-5 sharp follow-up questions the consultant should ask next.
-Return ONLY a JSON array of strings. No markdown, no explanation. Example: ["Question 1?","Question 2?"]`,
+Given the transcript so far, suggest the single sharpest follow-up question the consultant should ask next.
+Return ONLY a JSON array with exactly one string. No markdown, no explanation. Example: ["Question?"]`,
     messages: [{ role: 'user', content: `Transcript so far:\n\n${transcript}` }],
   })
 
   const text = msg.content[0].type === 'text' ? msg.content[0].text : '[]'
   try {
     const parsed = JSON.parse(text)
-    return Array.isArray(parsed) ? parsed.slice(0, 5) : []
+    return Array.isArray(parsed) ? parsed.slice(0, 1) : []
   } catch {
     return []
   }

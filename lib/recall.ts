@@ -81,7 +81,9 @@ export async function createBot(meetingUrl: string, meetingId: string): Promise<
         {
           type: 'webhook',
           url: webhookUrl,
-          events: ['transcript.data'],
+          // partial_data = word-by-word interim (shown live); data = finalized
+          // utterances (persisted as segments).
+          events: ['transcript.data', 'transcript.partial_data'],
         },
       ],
     },

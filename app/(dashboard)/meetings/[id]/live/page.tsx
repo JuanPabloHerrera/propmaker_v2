@@ -127,7 +127,21 @@ export default function LiveMeetingPage() {
         },
         (payload) => {
           const updated = payload.new as Meeting
-          setMeeting(updated)
+          // For bot meetings, the recall partial stream owns the interim line:
+          // show the latest word-by-word partial, and clear it (null) when the
+          // utterance finalizes into a segment. Browser-mic meetings have no bot,
+          // so their interim line stays driven by the local mic.
+          if (updated.recall_bot_id) setInterimText(updated.live_partial ?? '')
+          // Avoid re-rendering the whole page on every partial: only replace the
+          // meeting object when a field we actually render changed.
+          setMeeting((prev) =>
+            prev &&
+            prev.status === updated.status &&
+            prev.recall_bot_id === updated.recall_bot_id &&
+            prev.capture_mode === updated.capture_mode
+              ? prev
+              : updated,
+          )
           if (updated.status === 'completed') {
             toast.success('Meeting ended. Processing transcript…')
             setTimeout(() => router.push(`/meetings/${id}/processing`), 800)

@@ -50,6 +50,7 @@ export interface Meeting {
   attached_product_ids: string[]
   detected_product_ids: string[]
   deal_status: DealStatus
+  live_partial: string | null
   created_at: string
   updated_at: string
 }
