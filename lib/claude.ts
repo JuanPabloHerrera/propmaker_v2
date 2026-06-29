@@ -56,6 +56,88 @@ function renderCatalog(products: Product[]): string {
   return lines.join('\n') + overflow
 }
 
+// ── Reference proposals ─────────────────────────────────────────────
+// Past proposals the user uploaded / reused, summarized once at save time and
+// fed to the proposal agent as cached context for "similar past projects".
+
+export interface ReferenceSummaryInput {
+  title: string
+  summary: string
+}
+
+const MAX_REFERENCE_PROPOSALS = 8
+const MAX_REFERENCE_SUMMARY_CHARS = 2400
+
+const REFERENCE_SUMMARY_SYSTEM = `You are a proposal analyst. Read one of the user's PAST business proposals and produce a compact, structured summary that another proposal writer can learn from.
+Capture, as short labeled lines: client / industry, project type, scope & key deliverables, pricing approach + ballpark total, timeline, and what made the proposal effective.
+Be specific and concrete; skip boilerplate, legal text, and contact details. Return ONLY the summary (under 350 words), no preamble.`
+
+async function runReferenceSummary(content: Anthropic.MessageParam['content']): Promise<string> {
+  const msg = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    system: REFERENCE_SUMMARY_SYSTEM,
+    messages: [{ role: 'user', content }],
+  })
+  const text = msg.content[0]?.type === 'text' ? msg.content[0].text : ''
+  return text.trim().slice(0, MAX_REFERENCE_SUMMARY_CHARS)
+}
+
+export function summarizeReferenceText(text: string): Promise<string> {
+  const trimmed = text.trim().slice(0, 15000)
+  if (!trimmed) return Promise.resolve('')
+  return runReferenceSummary(`Proposal to summarize:\n\n${trimmed}`)
+}
+
+export function summarizeReferencePdf(pdfBase64: string): Promise<string> {
+  return runReferenceSummary([
+    { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+    { type: 'text', text: 'Summarize this proposal per the instructions.' },
+  ])
+}
+
+function renderReferenceProposals(refs: ReferenceSummaryInput[] | undefined): string {
+  if (!refs || refs.length === 0) return ''
+  const slice = refs.slice(0, MAX_REFERENCE_PROPOSALS)
+  const blocks = slice.map((r, i) => `${i + 1}. ${r.title}\n${r.summary}`)
+  const overflow =
+    refs.length > MAX_REFERENCE_PROPOSALS
+      ? `\n\n(… ${refs.length - MAX_REFERENCE_PROPOSALS} more references omitted to keep the prompt bounded.)`
+      : ''
+  return blocks.join('\n\n') + overflow
+}
+
+// Appended to the proposal-writing instructions when references are present.
+const REFERENCE_RULE = `Reference proposals:
+- You may be given REFERENCE PROPOSALS from the user's past projects. Use them ONLY as models for structure, section flow, tone, scope framing, and pricing APPROACH on similar projects.
+- You MUST NOT copy or introduce any line item, product, service, or price from a reference that is not in the user's current catalog — line items remain governed by the catalog rule above.`
+
+function referenceSystemBlock(
+  referenceProposals: ReferenceSummaryInput[] | undefined,
+): Anthropic.TextBlockParam | null {
+  const referencesBlock = renderReferenceProposals(referenceProposals)
+  if (!referencesBlock) return null
+  return {
+    type: 'text',
+    text: `## REFERENCE PROPOSALS (past similar projects — structure/approach only)\n${referencesBlock}`,
+    cache_control: { type: 'ephemeral' },
+  }
+}
+
+function buildSystemBlocks(
+  instructions: string,
+  catalogBlock: string,
+  referenceProposals: ReferenceSummaryInput[] | undefined,
+): Anthropic.TextBlockParam[] {
+  const blocks: Anthropic.TextBlockParam[] = [
+    { type: 'text', text: instructions, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: `## USER PRODUCT CATALOG\n${catalogBlock}`, cache_control: { type: 'ephemeral' } },
+  ]
+  const refBlock = referenceSystemBlock(referenceProposals)
+  if (refBlock) blocks.push(refBlock)
+  return blocks
+}
+
 interface GenerateProposalInput {
   browserTranscript: string
   recallTranscript: string
@@ -64,6 +146,7 @@ interface GenerateProposalInput {
   chatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
   liveChatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
   meetingType: MeetingType
+  referenceProposals?: ReferenceSummaryInput[]
 }
 
 export async function generateProposal({
@@ -74,6 +157,7 @@ export async function generateProposal({
   chatHistory,
   liveChatHistory,
   meetingType,
+  referenceProposals,
 }: GenerateProposalInput): Promise<string> {
   const label = MEETING_TYPE_LABELS[meetingType]
 
@@ -110,6 +194,8 @@ Output structure (use exactly these section headers with ## prefix):
 
 The "Recommended Line Items" section MUST be a Markdown table with columns: Item, Category, Description, Unit price. Reference only catalog products by their exact name. Omit this section entirely if the catalog is empty.
 
+${REFERENCE_RULE}
+
 Be specific, professional, and ground every claim in the sources above. Return only the Markdown content, no preamble.`
 
   const userContent = [
@@ -125,10 +211,7 @@ Be specific, professional, and ground every claim in the sources above. Return o
   const msg = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 6144,
-    system: [
-      { type: 'text', text: instructions, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: `## USER PRODUCT CATALOG\n${catalogBlock}`, cache_control: { type: 'ephemeral' } },
-    ],
+    system: buildSystemBlocks(instructions, catalogBlock, referenceProposals),
     messages: [{ role: 'user', content: userContent }],
   })
 
@@ -163,6 +246,7 @@ interface PostMeetingChatInput {
   products: Product[]
   chatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
   liveChatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  referenceProposals?: ReferenceSummaryInput[]
 }
 
 export function streamPostMeetingChat({
@@ -172,6 +256,7 @@ export function streamPostMeetingChat({
   products,
   chatHistory,
   liveChatHistory,
+  referenceProposals,
 }: PostMeetingChatInput) {
   const messages: Anthropic.MessageParam[] = chatHistory.map((m) => ({
     role: m.role,
@@ -214,13 +299,17 @@ After enough questions are answered (or the consultant says they're done), reply
     .filter(Boolean)
     .join('\n\n')
 
+  const systemBlocks: Anthropic.TextBlockParam[] = [
+    { type: 'text', text: instructions, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: contextBlock, cache_control: { type: 'ephemeral' } },
+  ]
+  const refBlock = referenceSystemBlock(referenceProposals)
+  if (refBlock) systemBlocks.push(refBlock)
+
   return anthropic.messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: 512,
-    system: [
-      { type: 'text', text: instructions, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: contextBlock, cache_control: { type: 'ephemeral' } },
-    ],
+    system: systemBlocks,
     messages,
   })
 }
@@ -240,6 +329,7 @@ interface RefineInput {
   history: Array<{ role: 'user' | 'assistant'; content: string }>
   products: Product[]
   meetingType: MeetingType
+  referenceProposals?: ReferenceSummaryInput[]
 }
 
 export function streamProposalRefine({
@@ -248,6 +338,7 @@ export function streamProposalRefine({
   history,
   products,
   meetingType,
+  referenceProposals,
 }: RefineInput) {
   const label = MEETING_TYPE_LABELS[meetingType]
   const catalogBlock = renderCatalog(products)
@@ -255,6 +346,8 @@ export function streamProposalRefine({
   const sharedRules = `Catalog rule:
 - The user's catalog is the ONLY set of offerings you may propose. Do not invent line items, services, or products that are not in the catalog.
 - If the catalog is empty, prefer narrative changes over inventing pricing.
+
+${REFERENCE_RULE}
 
 Source priority: notes + Q&A are authoritative; transcripts are reference.`
 
@@ -292,17 +385,21 @@ Your behavior in this turn:
     `## CURRENT PROPOSAL (Markdown)\n${currentMarkdown || '(empty)'}`,
   ].join('\n\n')
 
+  const refineSystem: Anthropic.TextBlockParam[] = [
+    {
+      type: 'text',
+      text: mode === 'apply' ? applyInstructions : chatInstructions,
+      cache_control: { type: 'ephemeral' },
+    },
+    { type: 'text', text: contextBlock, cache_control: { type: 'ephemeral' } },
+  ]
+  const refineRefBlock = referenceSystemBlock(referenceProposals)
+  if (refineRefBlock) refineSystem.push(refineRefBlock)
+
   return anthropic.messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: mode === 'apply' ? 6144 : 768,
-    system: [
-      {
-        type: 'text',
-        text: mode === 'apply' ? applyInstructions : chatInstructions,
-        cache_control: { type: 'ephemeral' },
-      },
-      { type: 'text', text: contextBlock, cache_control: { type: 'ephemeral' } },
-    ],
+    system: refineSystem,
     messages,
   })
 }

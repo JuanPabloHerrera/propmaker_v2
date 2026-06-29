@@ -53,6 +53,7 @@ each file in [supabase/migrations/](supabase/migrations/) in order:
 008_realtime_live_chat.sql  ← adds live_meeting_chat to the Realtime publication
 009_fix_signup_trigger.sql  ← pins create_user_profile() search_path (fixes signup 500)
 010_live_partial.sql        ← meetings.live_partial for real-time bot transcript
+011_reference_proposals.sql ← reference_proposals (past proposals as agent context)
 ```
 
 Then:

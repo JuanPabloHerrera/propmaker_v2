@@ -118,6 +118,21 @@ export interface ProposalShare {
   message_body: string | null
 }
 
+export type ReferenceProposalSource = 'uploaded' | 'app_proposal'
+
+export interface ReferenceProposal {
+  id: string
+  user_id: string
+  title: string
+  category: string | null
+  summary: string
+  source: ReferenceProposalSource
+  source_proposal_id: string | null
+  original_filename: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface TiptapDocument {
   type: 'doc'
   content: TiptapNode[]

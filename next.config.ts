@@ -23,6 +23,8 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_APP_VERSION: pkg.version ?? '0.0.0',
     NEXT_PUBLIC_GIT_SHA: resolveGitSha(),
   },
+  // mammoth (DOCX text extraction) is a Node lib — keep it out of the bundle.
+  serverExternalPackages: ['mammoth'],
   experimental: {
     serverActions: {
       bodySizeLimit: '2mb',

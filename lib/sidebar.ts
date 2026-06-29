@@ -4,12 +4,13 @@ export interface SidebarCounts {
   meetings: number
   products: number
   proposals: number
+  references: number
 }
 
 export async function getSidebarCounts(userId: string): Promise<SidebarCounts> {
   const supabase = await createClient()
 
-  const [meetings, products, proposals] = await Promise.all([
+  const [meetings, products, proposals, references] = await Promise.all([
     supabase
       .from('meetings')
       .select('*', { count: 'exact', head: true })
@@ -23,11 +24,16 @@ export async function getSidebarCounts(userId: string): Promise<SidebarCounts> {
       .from('proposals')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId),
+    supabase
+      .from('reference_proposals')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId),
   ])
 
   return {
     meetings: meetings.count ?? 0,
     products: products.count ?? 0,
     proposals: proposals.count ?? 0,
+    references: references.count ?? 0,
   }
 }

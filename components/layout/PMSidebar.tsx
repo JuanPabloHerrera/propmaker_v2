@@ -62,6 +62,14 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
       badge: counts.proposals || undefined,
     },
     {
+      id: 'references',
+      label: 'References',
+      href: '/references',
+      icon: 'archive',
+      badge: counts.references || undefined,
+      matcher: (p) => p.startsWith('/references'),
+    },
+    {
       id: 'meetings',
       label: 'Meetings',
       href: '/?filter=meetings',

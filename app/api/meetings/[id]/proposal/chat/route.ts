@@ -70,6 +70,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { data: productsData } = await productsQuery
   const products = (productsData ?? []) as Product[]
 
+  // Reference proposals: the user's past projects (summaries) — context for
+  // "similar past projects" when writing this one.
+  const { data: refData } = await supabase
+    .from('reference_proposals')
+    .select('title, summary')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(8)
+  const referenceProposals = (refData ?? []) as Array<{ title: string; summary: string }>
+
   // Fetch existing chat history
   const { data: existingChat } = await supabase
     .from('post_meeting_chat')
@@ -113,6 +123,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       chatHistory: historyForGen,
       liveChatHistory,
       meetingType: meeting.meeting_type as MeetingType,
+      referenceProposals,
     })
     const content_json = markdownToTiptap(proposalMarkdown)
     const { data: existing } = await supabase
@@ -190,6 +201,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     products,
     chatHistory,
     liveChatHistory,
+    referenceProposals,
   })
 
   let fullText = ''

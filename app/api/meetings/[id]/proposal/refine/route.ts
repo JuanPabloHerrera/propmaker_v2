@@ -78,12 +78,21 @@ export async function POST(
   const { data: productsData } = await productsQuery
   const products = (productsData ?? []) as Product[]
 
+  const { data: refData } = await supabase
+    .from('reference_proposals')
+    .select('title, summary')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(8)
+  const referenceProposals = (refData ?? []) as Array<{ title: string; summary: string }>
+
   const stream = streamProposalRefine({
     mode: body.mode,
     currentMarkdown,
     history: body.history,
     products,
     meetingType: (meeting as Pick<Meeting, 'meeting_type'>).meeting_type as MeetingType,
+    referenceProposals,
   })
 
   const encoder = new TextEncoder()
