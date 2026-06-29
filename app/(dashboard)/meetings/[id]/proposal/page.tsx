@@ -29,16 +29,21 @@ export default function ProposalPage() {
   const [refineOpen, setRefineOpen] = React.useState(false)
 
   const fetchData = React.useCallback(async () => {
-    const [meetingRes, proposalRes, profileRes, userRes] = await Promise.all([
+    // Get the user first so the profile query can filter by user_id — the
+    // public-read RLS policy on user_profiles (for shared proposals) makes an
+    // unfiltered select return multiple rows, which 406s under .single().
+    const { data: { user } } = await supabase.auth.getUser()
+    const [meetingRes, proposalRes, profileRes] = await Promise.all([
       supabase.from('meetings').select('*').eq('id', id).single(),
       fetch(`/api/meetings/${id}/proposal`).then((r) => r.json()),
-      supabase.from('user_profiles').select('*').single(),
-      supabase.auth.getUser(),
+      user
+        ? supabase.from('user_profiles').select('*').eq('user_id', user.id).maybeSingle()
+        : Promise.resolve({ data: null }),
     ])
     if (meetingRes.data) setMeeting(meetingRes.data as Meeting)
     if (proposalRes) setProposal(proposalRes as Proposal)
     if (profileRes.data) setProfile(profileRes.data as UserProfile)
-    if (userRes.data.user?.email) setEmail(userRes.data.user.email)
+    if (user?.email) setEmail(user.email)
   }, [id, supabase])
 
   React.useEffect(() => {

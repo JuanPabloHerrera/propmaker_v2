@@ -31,10 +31,15 @@ export default function SharePage() {
 
   React.useEffect(() => {
     ;(async () => {
+      // Filter the profile by user_id — the public-read RLS policy on
+      // user_profiles can otherwise return multiple rows and 406 under .single().
+      const { data: { user } } = await supabase.auth.getUser()
       const [meetingRes, propRes, profileRes] = await Promise.all([
         supabase.from('meetings').select('*').eq('id', id).single(),
         supabase.from('proposals').select('*').eq('meeting_id', id).maybeSingle(),
-        supabase.from('user_profiles').select('*').single(),
+        user
+          ? supabase.from('user_profiles').select('*').eq('user_id', user.id).maybeSingle()
+          : Promise.resolve({ data: null }),
       ])
       if (meetingRes.data) setMeeting(meetingRes.data as Meeting)
       if (propRes.data) setProposal(propRes.data as Proposal)
