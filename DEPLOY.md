@@ -51,6 +51,7 @@ each file in [supabase/migrations/](supabase/migrations/) in order:
 006_user_logo.sql           ← user_profiles.logo_url + user-logos Storage bucket
 007_share_open_tracking.sql ← proposal open tracking
 008_realtime_live_chat.sql  ← adds live_meeting_chat to the Realtime publication
+009_fix_signup_trigger.sql  ← pins create_user_profile() search_path (fixes signup 500)
 ```
 
 Then:
