@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
+import { VersionPill } from '@/components/ui/version-pill'
 import './globals.css'
 
 const geistSans = Geist({
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full flex flex-col">
         {children}
         <Toaster position="bottom-right" />
+        <VersionPill />
       </body>
     </html>
   )
