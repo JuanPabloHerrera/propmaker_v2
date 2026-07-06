@@ -52,8 +52,9 @@ Note: due to spaces in the directory name, npm `.bin` symlinks don't work — us
 06 Active meeting     /meetings/[id]/live
 07 Processing         /meetings/[id]/processing    ← new
 08 Agent Q&A          /meetings/[id]/qa            ← new (split from proposal)
-09 Final proposal     /meetings/[id]/proposal
-10 Export & share     /meetings/[id]/proposal/share ← new
+09 Proposal brief     /meetings/[id]/brief         ← new (prioritized synthesis, reviewed before generation)
+10 Final proposal     /meetings/[id]/proposal
+11 Export & share     /meetings/[id]/proposal/share ← new
    Public view        /p/[slug]                    ← new (no auth)
 ```
 
@@ -77,23 +78,34 @@ Active meeting layout
   MeetingToolbar (top: back, title + REC pill, sidebar seg, attendees, mic, end)
   Transcript (left, collapsible) · NotesPad center · LiveChatPanel (right, collapsible)
 
-End meeting → /processing → /qa → /proposal → /proposal/share
-  /api/meetings/[id]/proposal/chat handles both Q&A streaming AND proposal generation.
-  On [READY_TO_GENERATE] or user "Generate now", generateProposal runs and the editor
-  receives the markdown; user then redirects to /proposal.
+End meeting → /processing → /qa → /brief → /proposal → /proposal/share
+  /api/meetings/[id]/proposal/chat handles ONLY the post-meeting Q&A stream. On
+  [READY_TO_GENERATE] or "Skip questions" it signals { toBrief: true } and the client
+  advances to /brief. There, POST /api/meetings/[id]/brief runs generateMeetingBrief —
+  a synthesis of every input (transcript, notes, Q&A, live co-pilot, catalog, references,
+  and the pre-meeting context/attendee/client metadata) into a prioritized ProposalBrief
+  persisted on meetings.proposal_brief. The consultant reviews/edits it (autosaved via
+  PATCH /api/meetings/[id]); "Generate proposal" then POSTs the brief to
+  /api/meetings/[id]/proposal/generate, which runs generateProposal with the brief as the
+  highest-authority input and upserts the proposals row → redirect to /proposal.
+  All three post-meeting routes gather their inputs via lib/meeting-inputs.gatherMeetingInputs.
 ```
 
 ## Data model (current)
 
 - `user_profiles` (new) — onboarding gate (`onboarded_at`), brand fields (company_name, tagline, website, industry, voice_tones[], tone_prompt, signature_name, signature_title, brand_colors[]). Auto-created on auth signup.
-- `meetings` — `+capture_mode`, `+selected_categories text[]`, `+notes_json jsonb`, `+attendees jsonb`, `+context_summary text`, `+client_company text`, `+client_value numeric`, `+attached_product_ids uuid[]`, `+detected_product_ids uuid[]`, `+deal_status` (`draft|proposal_sent|won|lost|upcoming`)
+- `meetings` — `+capture_mode`, `+selected_categories text[]`, `+notes_json jsonb`, `+attendees jsonb`, `+context_summary text`, `+client_company text`, `+client_value numeric`, `+attached_product_ids uuid[]`, `+detected_product_ids uuid[]`, `+deal_status` (`draft|proposal_sent|won|lost|upcoming`), `+proposal_brief jsonb` (reviewed pre-proposal synthesis, migration **`013`**)
 - `transcript_segments` — `+source ('browser'|'recall')`
 - `products` — id, user_id, name, category, description, price_amount, price_unit, currency, notes, active
 - `proposals` — `+public_slug text unique`, `+shared_at timestamptz`
 - `proposal_shares` (new) — proposal_id, recipient_email, sent_at, opened_at, message_body
 
 ## Key files
-- `lib/claude.ts` — Anthropic SDK; `generateProposal`, `streamPostMeetingChat` (prompt-cached)
+- `lib/claude.ts` — Anthropic SDK; `generateMeetingBrief` (pre-proposal synthesis → `ProposalBrief`), `generateProposal` (takes the reviewed brief as top-priority input; emits a `## Priorities & Key Deliverables` section), `streamPostMeetingChat` (all prompt-cached), plus `coerceBrief`/`emptyBrief` helpers
+- `lib/meeting-inputs.ts` — `gatherMeetingInputs()`: single source of truth for the transcript/notes/catalog/references/Q&A/live-chat/context bundle shared by the chat, brief, and generate routes
+- `app/api/meetings/[id]/brief/route.ts` — GET (read persisted brief) + POST (synthesize + persist)
+- `app/api/meetings/[id]/proposal/generate/route.ts` — final proposal generation from the reviewed brief
+- `app/(dashboard)/meetings/[id]/brief/page.tsx` + `components/brief/{BriefReview,BriefToolbar}.tsx` — the review/edit screen
 - `lib/tiptap.ts` — Tiptap JSON → plain text walker
 - `lib/recall.ts` — Recall.ai wrapper (optional bot path)
 - `lib/sidebar.ts` — `getSidebarCounts()` server helper
@@ -127,3 +139,11 @@ End meeting → /processing → /qa → /proposal → /proposal/share
 - **Transcript source partitioning** — never delete `transcript_segments` without filtering on `source`; the webhook and sync routes only delete `source='recall'` rows so the browser-captured stream is preserved.
 - **Print stylesheet** — `@media print` in `globals.css` flattens glass + drops sidebar/toolbars. Use `.pm-no-print` on any UI chrome that shouldn't appear in PDF exports. Share screen offers `window.print()` via the public `/p/[slug]?print=1` route.
 - **Post-meeting routes** — Active meeting `endMeeting` redirects to `/processing`; Processing auto-advances to `/qa`; Q&A "Generate now" advances to `/proposal`; Proposal toolbar Share button goes to `/proposal/share`.
+
+## Branded PPTX proposals (skill + agent)
+
+The **canonical way to produce a polished, branded `.pptx` deck** of a proposal is the Claude Code skill **`pptx-proposal-deck`** (`.claude/skills/pptx-proposal-deck/`), driven by the **`pptx-proposal-generator`** subagent (`.claude/agents/`). It runs in **Claude Code cloud** (needs `/mnt/skills/public/pptx`, LibreOffice, Poppler).
+
+- **What it does:** takes the proposal narrative we already produce — primarily the reviewed **`ProposalBrief`** (`meetings.proposal_brief`), plus the generated proposal doc — and a **brand template `.pptx`**, and builds a B2B deck (portada → contexto/retos → necesidades citadas → quiénes somos → metodología → casos de uso → demo → seguridad → alcance → próximos pasos → cierre) via `scripts/build_deck.js` (pptxgenjs), with a mandatory visual + leftover-token QA loop. Spanish by default; **no prices** in the deck. **The slide count adapts to the content** — one detail slide per `ProposalBrief.priorities` entry and optional sections (`context`/`methodology`/`demo`/`security`/`scope`) omitted when the narrative doesn't support them (typically ~14).
+- **The mix:** design/build = the skill; content = PropMaker's narrative (`references/propmaker-narrative-map.md` maps `ProposalBrief`/doc → slides). The agent edits only `BRAND` + `CONTENT` in `build_deck.js`; render code is QA-proven and untouched. `scripts/example_deck_gentera.js` is a worked example (reference only — the QA grep blocks any of its tokens leaking).
+- **Unchanged by this:** `lib/claude.ts` (`generateProposal`/`generateMeetingBrief`) and the doc/Markdown→Tiptap pipeline stay as-is. The **serverless PPTX export** (`lib/pptx.ts` / `lib/pptx-template-fill.ts` via `app/api/proposals/[id]/export/pptx/route.ts`) also stays as the lightweight in-product download; the skill is the high-fidelity, agent-driven alternative.
