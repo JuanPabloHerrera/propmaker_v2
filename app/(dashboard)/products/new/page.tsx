@@ -15,7 +15,7 @@ export default async function NewProductPage() {
           ← Back
         </Link>
         <h2 className="text-2xl font-semibold text-[#1d1d1f] tracking-tight mt-3">New product</h2>
-        <p className="text-sm text-[#6e6e73] mt-0.5">An offering that PropCopilot can recommend during proposal generation.</p>
+        <p className="text-sm text-[#6e6e73] mt-0.5">An offering that PropMaker can recommend during proposal generation.</p>
       </div>
 
       <ProductForm categories={categories} />

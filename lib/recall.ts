@@ -68,7 +68,7 @@ export async function createBot(meetingUrl: string, meetingId: string): Promise<
 
   const payload: Record<string, unknown> = {
     meeting_url: meetingUrl,
-    bot_name: 'PropCopilot',
+    bot_name: 'PropMaker',
     metadata: { meeting_id: meetingId },
     webhook_url: webhookUrl,
     recording_config: {
