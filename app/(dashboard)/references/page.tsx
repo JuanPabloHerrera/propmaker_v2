@@ -13,6 +13,12 @@ interface ProposalOption {
 }
 
 const ACCEPT = '.pdf,.docx,.txt,.md,.markdown,.pptx'
+const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+const DECK_BUCKET = 'reference-decks'
+
+function isPptx(file: File): boolean {
+  return file.type === PPTX_MIME || /\.pptx$/i.test(file.name)
+}
 
 export default function ReferencesPage() {
   const supabase = React.useMemo(() => createClient(), [])
@@ -60,31 +66,70 @@ export default function ReferencesPage() {
     void loadProposals()
   }, [refresh, loadProposals])
 
+  function resetForm() {
+    setTitle('')
+    setCategory('')
+    setPasted('')
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  // .pptx style templates can be large; upload them straight to Storage from the
+  // browser (the API's multipart route hits Vercel's ~4.5MB body limit), then
+  // register the stored file as JSON.
+  async function uploadPptxTemplate(file: File) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Please sign in again.')
+    const path = `${user.id}/${crypto.randomUUID()}.pptx`
+
+    const { error: upErr } = await supabase.storage
+      .from(DECK_BUCKET)
+      .upload(path, file, { contentType: PPTX_MIME, upsert: false })
+    if (upErr) throw new Error(upErr.message || 'Could not upload the PowerPoint.')
+
+    const res = await fetch('/api/reference-proposals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title,
+        category: category.trim() || null,
+        file_path: path,
+        original_filename: file.name,
+      }),
+    })
+    if (!res.ok) {
+      // Clean up the orphaned object so a failed registration leaves nothing behind.
+      await supabase.storage.from(DECK_BUCKET).remove([path]).catch(() => {})
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error ?? 'Could not save the template.')
+    }
+  }
+
   async function submitUpload(file?: File) {
     if (!title.trim()) {
       toast.error('Give the reference a title first.')
       return
     }
-    const form = new FormData()
-    form.append('title', title)
-    if (category.trim()) form.append('category', category)
-    if (file) form.append('file', file)
-    else if (pasted.trim()) form.append('pasted_text', pasted)
-    else {
+    if (!file && !pasted.trim()) {
       toast.error('Choose a file or paste the proposal text.')
       return
     }
 
     setBusy(true)
     try {
-      const res = await fetch('/api/reference-proposals', { method: 'POST', body: form })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error ?? 'Upload failed')
+      if (file && isPptx(file)) {
+        await uploadPptxTemplate(file)
+      } else {
+        const form = new FormData()
+        form.append('title', title)
+        if (category.trim()) form.append('category', category)
+        if (file) form.append('file', file)
+        else form.append('pasted_text', pasted)
+        const res = await fetch('/api/reference-proposals', { method: 'POST', body: form })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Upload failed')
+      }
       toast.success('Reference saved.')
-      setTitle('')
-      setCategory('')
-      setPasted('')
-      if (fileRef.current) fileRef.current.value = ''
+      resetForm()
       await refresh()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Upload failed')

@@ -1,13 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { randomUUID } from 'node:crypto'
+import type { SupabaseClient, User } from '@supabase/supabase-js'
 import { summarizeReferenceText, summarizeReferencePdf } from '@/lib/claude'
 import {
   extractDocxText,
   decodePlainText,
   isAcceptedReferenceFile,
-  isPptxFile,
-  PPTX_MIME,
 } from '@/lib/reference-extract'
 import { extractPptxTheme, themeForStorage } from '@/lib/pptx-theme'
 
@@ -17,9 +15,68 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024
-const MAX_PPTX_BYTES = 25 * 1024 * 1024
 const DECK_BUCKET = 'reference-decks'
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+/**
+ * Register a .pptx style template that the browser already uploaded directly to
+ * the `reference-decks` bucket (bypasses the Vercel ~4.5MB function-body limit).
+ * We download it server-side, extract its theme, and insert the row.
+ */
+async function registerPptxTemplate(
+  request: Request,
+  supabase: SupabaseClient,
+  user: User,
+): Promise<NextResponse> {
+  const body = (await request.json().catch(() => null)) as
+    | { title?: string; category?: string | null; file_path?: string; original_filename?: string | null }
+    | null
+  if (!body) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+
+  const title = (body.title || '').trim()
+  const category = (body.category || '')?.toString().trim() || null
+  const filePath = (body.file_path || '').trim()
+  if (!title) return NextResponse.json({ error: 'Title is required' }, { status: 400 })
+  if (!filePath) return NextResponse.json({ error: 'Missing uploaded file path' }, { status: 400 })
+  // Ownership: the object must live under the caller's own {user_id}/ folder.
+  if (!filePath.startsWith(`${user.id}/`)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { data: blob, error: dlErr } = await supabase.storage.from(DECK_BUCKET).download(filePath)
+  if (dlErr || !blob) {
+    return NextResponse.json({ error: 'Could not read the uploaded PowerPoint.' }, { status: 400 })
+  }
+
+  const theme = await extractPptxTheme(await blob.arrayBuffer())
+  if (!theme) {
+    await supabase.storage.from(DECK_BUCKET).remove([filePath]).catch(() => {})
+    return NextResponse.json(
+      { error: "Couldn't read this PowerPoint's theme. Make sure it's a valid .pptx." },
+      { status: 422 },
+    )
+  }
+
+  const { data, error } = await supabase
+    .from('reference_proposals')
+    .insert({
+      user_id: user.id,
+      title,
+      category,
+      summary: 'PowerPoint style template',
+      source: 'pptx_template',
+      original_filename: body.original_filename ?? null,
+      file_path: filePath,
+      theme_json: themeForStorage(theme),
+    })
+    .select()
+    .single()
+  if (error) {
+    await supabase.storage.from(DECK_BUCKET).remove([filePath]).catch(() => {})
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  return NextResponse.json(data, { status: 201 })
+}
 
 export async function GET() {
   const supabase = await createClient()
@@ -41,6 +98,12 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // .pptx templates are uploaded to Storage from the browser, then registered
+  // here as JSON (keeps the large file off the Vercel function body).
+  if ((request.headers.get('content-type') || '').includes('application/json')) {
+    return registerPptxTemplate(request, supabase, user)
+  }
+
   const form = await request.formData().catch(() => null)
   if (!form) return NextResponse.json({ error: 'Expected multipart form data' }, { status: 400 })
 
@@ -50,46 +113,6 @@ export async function POST(request: Request) {
   const category = ((form.get('category') as string) || '').trim() || null
 
   if (!title) return NextResponse.json({ error: 'Title is required' }, { status: 400 })
-
-  // PPTX style template: store the file + extract its theme; never summarized.
-  if (file instanceof File && file.size > 0 && isPptxFile(file.name, file.type)) {
-    if (file.size > MAX_PPTX_BYTES) {
-      return NextResponse.json({ error: 'PowerPoint must be 25 MB or smaller.' }, { status: 413 })
-    }
-    const bytes = await file.arrayBuffer()
-    const theme = await extractPptxTheme(bytes)
-    if (!theme) {
-      return NextResponse.json(
-        { error: "Couldn't read this PowerPoint's theme. Make sure it's a valid .pptx." },
-        { status: 422 },
-      )
-    }
-    const path = `${user.id}/${randomUUID()}.pptx`
-    const { error: upErr } = await supabase.storage
-      .from(DECK_BUCKET)
-      .upload(path, bytes, { contentType: PPTX_MIME, upsert: false })
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
-
-    const { data, error } = await supabase
-      .from('reference_proposals')
-      .insert({
-        user_id: user.id,
-        title,
-        category,
-        summary: 'PowerPoint style template',
-        source: 'pptx_template',
-        original_filename: file.name,
-        file_path: path,
-        theme_json: themeForStorage(theme),
-      })
-      .select()
-      .single()
-    if (error) {
-      await supabase.storage.from(DECK_BUCKET).remove([path]).catch(() => {})
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-    return NextResponse.json(data, { status: 201 })
-  }
 
   let summary = ''
   let originalFilename: string | null = null
