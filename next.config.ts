@@ -23,9 +23,13 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_APP_VERSION: pkg.version ?? '0.0.0',
     NEXT_PUBLIC_GIT_SHA: resolveGitSha(),
   },
-  // mammoth (DOCX text extraction) and pptxgenjs (PPTX generation) are Node
-  // libs that rely on fs/https — keep them out of the bundle.
-  serverExternalPackages: ['mammoth', 'pptxgenjs'],
+  // mammoth (DOCX text extraction) is a Node lib — keep it out of the bundle.
+  // NOTE: pptxgenjs must NOT be listed here. Under Turbopack, external packages
+  // are loaded at runtime via ESM import(), which resolves pptxgenjs's ESM build
+  // (dist/pptxgen.es.js) — a .js file with import syntax but no "type":"module",
+  // so Node loads it as CJS and throws. It has no native deps (only jszip), so
+  // let Turbopack bundle it instead.
+  serverExternalPackages: ['mammoth'],
   experimental: {
     serverActions: {
       bodySizeLimit: '2mb',
