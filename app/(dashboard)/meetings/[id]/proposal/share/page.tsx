@@ -159,6 +159,7 @@ export default function SharePage() {
             onSend={send}
             sending={sending}
             proposalSlug={proposal.public_slug}
+            proposalId={proposal.id}
           />
         </div>
       </div>

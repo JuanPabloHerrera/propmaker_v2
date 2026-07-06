@@ -14,6 +14,49 @@ export function tiptapToText(doc: TiptapDocument | null | undefined): string {
   return walk(doc.content).trim()
 }
 
+/** Flatten inline nodes to plain text, stripping all marks. */
+export function inlineText(nodes: TiptapNode[] | undefined): string {
+  if (!nodes) return ''
+  let out = ''
+  for (const node of nodes) {
+    if (node.type === 'text' && node.text) out += node.text
+    else if (node.type === 'hardBreak') out += ' '
+    else if (node.content) out += inlineText(node.content)
+  }
+  return out.trim()
+}
+
+export interface ProposalSection {
+  /** The h2 heading text; '' for any nodes preceding the first h2 (preamble). */
+  title: string
+  /** The block nodes that belong to this section (excludes the h2 itself). */
+  nodes: TiptapNode[]
+}
+
+/**
+ * Split a proposal document into sections on level-2 (h2) headings. The AI
+ * generates proposals with a fixed `##` skeleton, so these headings are the
+ * natural slide boundaries for the PPTX export. Nodes before the first h2 are
+ * grouped into a leading `''`-titled preamble section.
+ */
+export function tiptapToSections(
+  doc: TiptapDocument | null | undefined,
+): ProposalSection[] {
+  if (!doc?.content) return []
+  const sections: ProposalSection[] = []
+  let current: ProposalSection = { title: '', nodes: [] }
+  for (const node of doc.content) {
+    if (node.type === 'heading' && Number(node.attrs?.level) === 2) {
+      if (current.title || current.nodes.length) sections.push(current)
+      current = { title: inlineText(node.content), nodes: [] }
+    } else {
+      current.nodes.push(node)
+    }
+  }
+  if (current.title || current.nodes.length) sections.push(current)
+  return sections
+}
+
 function walk(nodes: TiptapNode[]): string {
   let out = ''
   for (const node of nodes) {

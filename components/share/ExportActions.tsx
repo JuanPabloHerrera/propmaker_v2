@@ -3,17 +3,31 @@
 import * as React from 'react'
 import { toast } from 'sonner'
 import { Icon } from '@/components/ui/icon'
+import { downloadProposalPptx } from '@/lib/download-pptx'
 
 interface Props {
   meetingId: string
   onSend: () => Promise<void>
   sending?: boolean
   proposalSlug?: string | null
+  proposalId?: string | null
 }
 
-export function ExportActions({ onSend, sending, proposalSlug }: Props) {
+export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Props) {
+  const [exporting, setExporting] = React.useState(false)
+
   function comingSoon(label: string) {
     toast.info(`${label} export coming soon.`)
+  }
+
+  async function exportPptx() {
+    if (exporting) return
+    setExporting(true)
+    try {
+      await downloadProposalPptx(proposalId)
+    } finally {
+      setExporting(false)
+    }
   }
 
   function openPrintView() {
@@ -51,7 +65,8 @@ export function ExportActions({ onSend, sending, proposalSlug }: Props) {
         </button>
         <button
           type="button"
-          onClick={() => comingSoon('Google Docs')}
+          onClick={exportPptx}
+          disabled={exporting}
           className="inline-flex items-center justify-center gap-1.5 flex-1 font-medium"
           style={{
             height: 30,
@@ -61,10 +76,11 @@ export function ExportActions({ onSend, sending, proposalSlug }: Props) {
             color: 'var(--ink-1)',
             background: 'rgba(255,255,255,0.6)',
             border: '0.5px solid rgba(28,24,20,0.10)',
+            opacity: exporting ? 0.5 : 1,
           }}
         >
-          <Icon name="doc" size={12} />
-          Docs
+          <Icon name="box" size={12} />
+          {exporting ? 'Exporting…' : 'PowerPoint'}
         </button>
         <button
           type="button"

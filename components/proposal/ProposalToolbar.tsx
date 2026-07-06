@@ -15,6 +15,8 @@ interface Props {
   mode: EditMode
   onModeChange: (m: EditMode) => void
   onPrint: () => void
+  onExportPptx: () => void
+  exporting?: boolean
   onRefine?: () => void
   onToggleStatus: () => void
   statusBusy?: boolean
@@ -27,6 +29,8 @@ export function ProposalToolbar({
   mode,
   onModeChange,
   onPrint,
+  onExportPptx,
+  exporting,
   onRefine,
   onToggleStatus,
   statusBusy,
@@ -104,6 +108,26 @@ export function ProposalToolbar({
       >
         <Icon name="download" size={12} />
         PDF
+      </button>
+
+      <button
+        type="button"
+        onClick={onExportPptx}
+        disabled={exporting}
+        className="inline-flex items-center gap-1.5 font-medium"
+        style={{
+          height: 24,
+          padding: '0 9px',
+          borderRadius: 6,
+          fontSize: 11.5,
+          color: 'var(--ink-1)',
+          background: 'rgba(255,255,255,0.6)',
+          border: '0.5px solid rgba(28,24,20,0.10)',
+          opacity: exporting ? 0.5 : 1,
+        }}
+      >
+        <Icon name="box" size={12} />
+        {exporting ? 'Exporting…' : 'PPTX'}
       </button>
 
       {proposal && (

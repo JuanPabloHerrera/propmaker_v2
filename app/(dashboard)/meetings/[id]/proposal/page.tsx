@@ -11,6 +11,7 @@ import { SignatureBlock } from '@/components/proposal/SignatureBlock'
 import { RefineDrawer } from '@/components/proposal/RefineDrawer'
 import { Skeleton } from '@/components/ui/skeleton'
 import { brandStyleBlock } from '@/lib/brand'
+import { downloadProposalPptx } from '@/lib/download-pptx'
 import type { Meeting, Proposal, UserProfile } from '@/types'
 
 export default function ProposalPage() {
@@ -27,6 +28,7 @@ export default function ProposalPage() {
   const [savedAgo, setSavedAgo] = React.useState<string>('just now')
   const [statusBusy, setStatusBusy] = React.useState(false)
   const [refineOpen, setRefineOpen] = React.useState(false)
+  const [exporting, setExporting] = React.useState(false)
 
   const fetchData = React.useCallback(async () => {
     // Get the user first so the profile query can filter by user_id — the
@@ -137,6 +139,19 @@ export default function ProposalPage() {
     w.location.href = `/p/${slug}?print=1`
   }
 
+  async function exportPptx() {
+    if (!proposal || exporting) {
+      if (!proposal) toast.info('Generate the proposal first.')
+      return
+    }
+    setExporting(true)
+    try {
+      await downloadProposalPptx(proposal.id)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   if (!meeting) {
     return <ProposalPageSkeleton />
   }
@@ -163,6 +178,8 @@ export default function ProposalPage() {
           mode={mode}
           onModeChange={setMode}
           onPrint={printPDF}
+          onExportPptx={exportPptx}
+          exporting={exporting}
           onRefine={() => {
             if (!proposal) {
               toast.info('Generate the proposal first, then refine.')
