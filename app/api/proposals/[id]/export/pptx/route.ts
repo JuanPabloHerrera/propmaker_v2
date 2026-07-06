@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { buildProposalPptx } from '@/lib/pptx'
 import { extractPptxTheme } from '@/lib/pptx-theme'
-import { fillProposalIntoTemplate } from '@/lib/pptx-template-fill'
 import type { Meeting, UserProfile } from '@/types'
 
 const DECK_BUCKET = 'reference-decks'
@@ -28,7 +27,7 @@ async function loadTemplateBytes(
 
 // pptxgenjs/jszip read Node Buffers — needs the Node runtime.
 export const runtime = 'nodejs'
-export const maxDuration = 60 // template download + parse + re-zip
+export const maxDuration = 60 // template download + theme extract + deck build
 
 function safeFilename(input: string): string {
   const base = (input || 'proposal')
@@ -83,32 +82,14 @@ export async function GET(
   const m = (meeting as Meeting | null) ?? null
   const p = (profile as UserProfile | null) ?? null
 
-  // Optional style template. When selected, first try to REUSE the template's
-  // actual slides (backgrounds/images/layout) with the proposal text swapped in;
-  // if that template can't be mapped, fall back to a theme-only deck (colors/
-  // fonts/background applied to PropMaker's own layout); with no template, the
-  // brand-colored deck.
+  // Optional style template. When one is selected we extract its BRAND (colors,
+  // fonts, and background — contrast-aware) and build a fresh, clean deck with the
+  // proposal's content in that brand. We deliberately do NOT reuse the template's
+  // own slides: that left the template's sample text behind and overlapped it with
+  // the proposal text. With no template, the user's brand colors are used.
   const templateBytes = templateId ? await loadTemplateBytes(supabase, user.id, templateId) : null
-
-  let buf: Buffer
-  if (templateBytes) {
-    const theme = await extractPptxTheme(templateBytes)
-    try {
-      buf = await fillProposalIntoTemplate({
-        templateBytes,
-        proposal,
-        meeting: m,
-        profile: p,
-        preparedOn,
-        theme,
-      })
-    } catch (err) {
-      console.error('[export/pptx] template-fill failed, falling back to theme-only:', err)
-      buf = await buildProposalPptx({ proposal, meeting: m, profile: p, preparedOn, template: theme })
-    }
-  } else {
-    buf = await buildProposalPptx({ proposal, meeting: m, profile: p, preparedOn, template: null })
-  }
+  const theme = templateBytes ? await extractPptxTheme(templateBytes) : null
+  const buf = await buildProposalPptx({ proposal, meeting: m, profile: p, preparedOn, template: theme })
 
   const filename = safeFilename(m?.client_company || m?.title || 'proposal') + '.pptx'
 
