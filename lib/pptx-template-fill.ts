@@ -1,5 +1,5 @@
 import { analyzePptxTemplate, type SlideInfo, type ShapeInfo } from '@/lib/pptx-template'
-import { sectionToBlocks } from '@/lib/proposal-blocks'
+import { sectionToBlocks, type BodyBlock } from '@/lib/proposal-blocks'
 import { tiptapToSections, inlineText } from '@/lib/tiptap'
 import {
   EMU_PER_INCH,
@@ -74,10 +74,24 @@ export async function fillProposalIntoTemplate(input: FillInput): Promise<Buffer
 
   const srcRels = (await zip.file(contentSource.relsPartName)?.async('string')) ?? null
 
-  const capped = sections.slice(0, MAX_CONTENT_SLIDES)
-  for (const section of capped) {
+  // Turn sections into slide specs, splitting long text sections across clean
+  // "(cont.)" slides so no single slide is over-filled.
+  const specs: SlideSpec[] = []
+  for (const section of sections) {
+    if (specs.length >= MAX_CONTENT_SLIDES) break
     const tableNode = section.nodes.find((n) => n.type === 'table')
-    const filledXml = buildContentSlideXml(contentSource, section, tableNode, tokens)
+    if (tableNode) {
+      specs.push({ title: section.title, tableNode })
+      continue
+    }
+    const chunks = chunkBlocks(sectionToBlocks(section.nodes), MAX_BODY_LINES)
+    chunks.forEach((chunk, i) =>
+      specs.push({ title: i === 0 ? section.title : `${section.title} (cont.)`, blocks: chunk }),
+    )
+  }
+
+  for (const spec of specs.slice(0, MAX_CONTENT_SLIDES)) {
+    const filledXml = buildSlideXml(contentSource, spec, tokens)
 
     if (canReuseContentSource && !reusedContentSource) {
       // First content section reuses the template's content slide (no orphan).
@@ -115,16 +129,45 @@ export async function fillProposalIntoTemplate(input: FillInput): Promise<Buffer
 
 // --------------------------------------------------------------------------
 
-function buildContentSlideXml(
-  source: SlideInfo,
-  section: { title: string; nodes: TiptapNode[] },
-  tableNode: TiptapNode | undefined,
-  tokens: TableStyleTokens,
-): string {
-  const repls: ShapeReplacement[] = []
-  if (source.titleShape) repls.push({ shape: source.titleShape, raw: fillTitle(source.titleShape, section.title) })
+interface SlideSpec {
+  title: string
+  blocks?: BodyBlock[]
+  tableNode?: TiptapNode
+}
 
-  if (tableNode) {
+// Per-slide body budget (approx. rendered lines) — kept low so slides stay clean.
+const MAX_BODY_LINES = 10
+
+function estLines(b: BodyBlock): number {
+  const chars = b.runs.reduce((n, r) => n + r.text.length, 0)
+  const cpl = b.isSubheading ? 55 : b.isList ? 72 : 88
+  return Math.max(1, Math.ceil(chars / cpl)) + (b.isSubheading ? 1.2 : 0.6)
+}
+
+/** Split a section's blocks into slide-sized chunks (never splitting a block). */
+function chunkBlocks(blocks: BodyBlock[], budget: number): BodyBlock[][] {
+  const chunks: BodyBlock[][] = []
+  let cur: BodyBlock[] = []
+  let used = 0
+  for (const b of blocks) {
+    const l = estLines(b)
+    if (cur.length && used + l > budget) {
+      chunks.push(cur)
+      cur = []
+      used = 0
+    }
+    cur.push(b)
+    used += l
+  }
+  if (cur.length) chunks.push(cur)
+  return chunks.length ? chunks : [[]]
+}
+
+function buildSlideXml(source: SlideInfo, spec: SlideSpec, tokens: TableStyleTokens): string {
+  const repls: ShapeReplacement[] = []
+  if (source.titleShape) repls.push({ shape: source.titleShape, raw: fillTitle(source.titleShape, spec.title) })
+
+  if (spec.tableNode) {
     // Table slide: clear the body placeholder, overlay a native table on it.
     if (source.bodyShape) {
       repls.push({
@@ -134,16 +177,15 @@ function buildContentSlideXml(
     }
     let xml = applyShapeReplacements(source.xml, repls)
     const region = source.bodyShape ?? defaultBodyRegion()
-    const frame = buildTableFrame(tableNode, region, maxShapeId(xml) + 1, tokens)
+    const frame = buildTableFrame(spec.tableNode, region, maxShapeId(xml) + 1, tokens)
     if (frame) xml = appendShapeToSlide(xml, frame)
     return xml
   }
 
-  if (source.bodyShape) {
-    const blocks = sectionToBlocks(section.nodes)
+  if (source.bodyShape && spec.blocks) {
     repls.push({
       shape: source.bodyShape,
-      raw: replaceTxBodyParagraphs(source.bodyShape.raw, buildBodyParagraphs(source.bodyShape.raw, blocks)),
+      raw: replaceTxBodyParagraphs(source.bodyShape.raw, buildBodyParagraphs(source.bodyShape.raw, spec.blocks)),
     })
   }
   return applyShapeReplacements(source.xml, repls)

@@ -58,44 +58,93 @@ export function buildTitleParagraph(shapeXml: string, text: string): string {
   return `<a:p>${pPr}<a:r>${rPr}<a:t>${xmlEscape(text)}</a:t></a:r></a:p>`
 }
 
+// Readability targets (1/100 pt). We cap at the template's own body size so we
+// never enlarge text — only make it smaller and cleaner.
+const BODY_SZ = 1400
+const LIST_SZ = 1300
+const SUBHEAD_SZ = 1600
+
 /**
- * Body paragraphs from neutral BodyBlocks. Reuses the shape's run props (font /
- * size / color) so text matches the template; bullets come from a minimal pPr so
- * list levels/plain paragraphs render correctly regardless of the placeholder's
- * default list style. (Per-run bold/italic is a v2 enhancement — text is flattened
- * to one run here.)
+ * Body paragraphs from neutral BodyBlocks — readable & clean: keeps the
+ * template's font family + color, but uses smaller controlled sizes, per-run
+ * bold/italic/code, a visual hierarchy for sub-headings, and paragraph/line
+ * spacing so slides breathe.
  */
 export function buildBodyParagraphs(shapeXml: string, blocks: BodyBlock[]): string {
-  const rPr = firstRunProps(shapeXml)
+  const baseRpr = firstRunProps(shapeXml)
+  const tsz = extractSz(baseRpr) ?? 1800
   if (blocks.length === 0) return `<a:p>${firstParaProps(shapeXml)}<a:endParaRPr/></a:p>`
   return blocks
     .map((b) => {
-      const text = b.runs.map((r) => r.text).join('')
-      const runProps = b.isCode ? monoRunProps(rPr) : rPr
-      const run = `<a:r>${runProps}<a:t>${xmlEscape(text)}</a:t></a:r>`
-      return `<a:p>${buildParaProps(b)}${run}</a:p>`
+      const sz = Math.min(tsz, b.isSubheading ? SUBHEAD_SZ : b.isList ? LIST_SZ : BODY_SZ)
+      const runsXml = b.runs
+        .map((r) => {
+          const rpr = deriveRunProps(baseRpr, {
+            sz,
+            bold: b.isSubheading || !!r.bold,
+            italic: !!r.italic || b.isQuote,
+            code: !!r.code || b.isCode,
+          })
+          return `<a:r>${rpr}<a:t>${xmlEscape(r.text)}</a:t></a:r>`
+        })
+        .join('')
+      return `<a:p>${buildParaProps(b)}${runsXml}</a:p>`
     })
     .join('')
 }
 
-function monoRunProps(rPr: string): string {
-  // Ensure a Courier New latin typeface inside the rPr.
-  if (/\/>$/.test(rPr)) return rPr.replace(/\/>$/, '><a:latin typeface="Courier New"/></a:rPr>')
-  if (/<a:latin\b/.test(rPr)) return rPr.replace(/<a:latin\b[^>]*\/>/, '<a:latin typeface="Courier New"/>')
-  return rPr.replace('</a:rPr>', '<a:latin typeface="Courier New"/></a:rPr>')
+/** Derive a run's <a:rPr> from the template base: set size + bold/italic/mono,
+ * preserving the template's font family and color. */
+function deriveRunProps(
+  baseRpr: string,
+  o: { sz: number; bold: boolean; italic: boolean; code: boolean },
+): string {
+  const m = /^<a:rPr\b([^>]*?)(\/?)>/.exec(baseRpr)
+  if (!m) return `<a:rPr lang="en-US" sz="${o.sz}"${o.bold ? ' b="1"' : ''}${o.italic ? ' i="1"' : ''}/>`
+  let attrs = m[1]
+  let inner = m[2] === '/' ? '' : baseRpr.slice(m[0].length).replace(/<\/a:rPr>\s*$/, '')
+  attrs = setAttr(attrs, 'sz', String(o.sz))
+  attrs = o.bold ? setAttr(attrs, 'b', '1') : removeAttr(attrs, 'b')
+  attrs = o.italic ? setAttr(attrs, 'i', '1') : removeAttr(attrs, 'i')
+  if (o.code) {
+    inner = /<a:latin\b/.test(inner)
+      ? inner.replace(/<a:latin\b[^>]*\/>/, '<a:latin typeface="Courier New"/>')
+      : inner + '<a:latin typeface="Courier New"/>'
+  }
+  return inner.trim() ? `<a:rPr${attrs}>${inner}</a:rPr>` : `<a:rPr${attrs}/>`
 }
 
+function setAttr(attrs: string, name: string, val: string): string {
+  const stripped = removeAttr(attrs, name)
+  return `${stripped} ${name}="${val}"`
+}
+
+function removeAttr(attrs: string, name: string): string {
+  return attrs.replace(new RegExp(`\\s*\\b${name}="[^"]*"`, 'g'), '')
+}
+
+function extractSz(rpr: string): number | null {
+  const m = /\bsz="(\d+)"/.exec(rpr)
+  return m ? Number(m[1]) : null
+}
+
+/** Paragraph props with correct OOXML child order: lnSpc → spcBef → spcAft → bullet. */
 function buildParaProps(b: BodyBlock): string {
-  const attrs: string[] = []
-  if (b.isList && b.listDepth > 0) attrs.push(`lvl="${Math.min(b.listDepth, 8)}"`)
+  const attrs = b.isList && b.listDepth > 0 ? ` lvl="${Math.min(b.listDepth, 8)}"` : ''
+  const spcBef = b.isSubheading ? 1000 : b.isList ? 200 : 500
+  const spcAft = b.isList ? 200 : 600
+  const spacing =
+    `<a:lnSpc><a:spcPct val="112000"/></a:lnSpc>` +
+    `<a:spcBef><a:spcPts val="${spcBef}"/></a:spcBef>` +
+    `<a:spcAft><a:spcPts val="${spcAft}"/></a:spcAft>`
   let bullet = ''
   if (b.isList) {
     if (b.ordered) bullet = '<a:buAutoNum type="arabicPeriod"/>'
-    // bullet lists use the placeholder level's default glyph → no override
+    // bullet lists inherit the placeholder level's default glyph
   } else {
-    bullet = '<a:buNone/>' // plain paragraphs & subheadings: no bullet
+    bullet = '<a:buNone/>' // plain paragraphs & sub-headings: no bullet
   }
-  return `<a:pPr${attrs.length ? ' ' + attrs.join(' ') : ''}>${bullet}</a:pPr>`
+  return `<a:pPr${attrs}>${spacing}${bullet}</a:pPr>`
 }
 
 // --- native table (graphicFrame) -------------------------------------------
