@@ -31,7 +31,18 @@ export function isPptxFile(name: string, mime: string): boolean {
 }
 
 export async function extractDocxText(buffer: ArrayBuffer): Promise<string> {
-  const result = await mammoth.extractRawText({ arrayBuffer: buffer })
+  // IMPORTANT: mammoth's Node build only recognizes a Node `buffer` input.
+  // Passing `{ arrayBuffer }` (the browser-build key) throws
+  // "Could not find file in options" for every file, so DOCX uploads always
+  // failed. Convert to a Node Buffer and use the `buffer` key.
+  let result
+  try {
+    result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) })
+  } catch {
+    throw new Error(
+      'Could not read this Word file — it may be corrupted or an older .doc format. Try exporting it to PDF.',
+    )
+  }
   return (result.value || '').slice(0, MAX_REFERENCE_CHARS)
 }
 

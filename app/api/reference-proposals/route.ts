@@ -13,6 +13,8 @@ import { extractPptxTheme, themeForStorage } from '@/lib/pptx-theme'
 
 // Node runtime: we read file bytes (Buffer) and parse DOCX with mammoth.
 export const runtime = 'nodejs'
+// PDF/DOCX summarization calls Claude and can exceed the default ~10s window.
+export const maxDuration = 60
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024
 const MAX_PPTX_BYTES = 25 * 1024 * 1024
@@ -118,6 +120,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Upload a file or paste proposal text.' }, { status: 400 })
     }
   } catch (err) {
+    console.error('[reference-proposals] failed to process upload:', err)
     const message = err instanceof Error ? err.message : 'Could not read the proposal'
     return NextResponse.json({ error: message }, { status: 400 })
   }
