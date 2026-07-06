@@ -64,7 +64,7 @@ export default function QAPage() {
     if (userMessage) setMessages(next)
 
     let assistantText = ''
-    let proposal: string | null = null
+    let toBrief = false
     let errorMessage: string | null = null
 
     try {
@@ -96,7 +96,7 @@ export default function QAPage() {
               assistantText += parsed.text
               setStreamingText(assistantText)
             }
-            if (parsed.proposal) proposal = parsed.proposal
+            if (parsed.toBrief) toBrief = true
             if (parsed.error) errorMessage = parsed.error
           } catch {
             /* malformed SSE */
@@ -115,12 +115,10 @@ export default function QAPage() {
 
     if (errorMessage) {
       toast.error(errorMessage)
-    } else if (proposal) {
-      // Proposal generated — head to the proposal page.
-      router.push(`/meetings/${id}/proposal`)
-    } else if (assistantText.includes('[READY_TO_GENERATE]')) {
-      // Agent signalled it's ready; surface generate button
-      toast.success('Ready to generate proposal')
+    } else if (toBrief || assistantText.includes('[READY_TO_GENERATE]')) {
+      // Q&A done — head to the brief review step, where the prioritized
+      // synthesis is generated before the proposal is written.
+      router.push(`/meetings/${id}/brief`)
     }
   }
 
@@ -135,9 +133,8 @@ export default function QAPage() {
     if (generating || streaming) return
     setGenerating(true)
     try {
-      // Deterministic: tell the server to generate now, regardless of how
-      // many questions were answered. No sentinel message — the server
-      // builds the proposal from the existing context.
+      // Deterministic: skip the remaining questions and hand off to the brief
+      // review step, regardless of how many questions were answered.
       await streamChat(undefined, messages, { generate: true })
     } finally {
       setGenerating(false)
@@ -240,7 +237,7 @@ export default function QAPage() {
             background: 'transparent',
           }}
         >
-          {generating ? 'Generating…' : 'Generate proposal now →'}
+          {generating ? 'Preparing…' : 'Continue to review →'}
         </button>
       </div>
     </div>

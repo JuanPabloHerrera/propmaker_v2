@@ -3,8 +3,11 @@ import type { TiptapDocument, TiptapNode } from '@/types'
 // Minimal markdown → Tiptap doc converter for proposal output.
 // Covers what `generateProposal` actually emits: headings (#, ##, ###),
 // bullet lists (-, *), paragraphs, bold (**), italic (*), inline code (`),
-// and a horizontal rule (---). Tables and other rich constructs degrade to
-// paragraphs of plain text (which is fine — the user can edit in Tiptap after).
+// a horizontal rule (---), and GitHub-style pipe tables (Timeline & Line Items).
+// Tables become real Tiptap table nodes (same shape as ProposalEditor's
+// `upgradeLegacyTables`) so freshly-generated proposals store native tables —
+// the editor renders them and the PPTX export emits a native table slide without
+// waiting for the user to open/edit the doc first.
 
 function parseInline(text: string): TiptapNode[] {
   const nodes: TiptapNode[] = []
@@ -57,6 +60,45 @@ function parseInline(text: string): TiptapNode[] {
   return nodes.length > 0 ? nodes : [{ type: 'text', text }]
 }
 
+// ── Pipe tables ─────────────────────────────────────────────────────
+
+function splitTableRow(row: string): string[] {
+  return row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+}
+
+function isTableSeparator(line: string): boolean {
+  if (!line.includes('|')) return false
+  const cells = splitTableRow(line)
+  return cells.length > 0 && cells.every((c) => /^:?-{3,}:?$/.test(c))
+}
+
+// ProseMirror rejects empty text nodes, so an empty cell holds a bare paragraph.
+function cellParagraph(text: string): TiptapNode {
+  const t = text.trim()
+  return t.length > 0 ? { type: 'paragraph', content: parseInline(t) } : { type: 'paragraph' }
+}
+
+function buildTable(headerCells: string[], bodyRows: string[][]): TiptapNode {
+  const cols = headerCells.length
+  return {
+    type: 'table',
+    content: [
+      {
+        type: 'tableRow',
+        content: headerCells.map((c) => ({ type: 'tableHeader', content: [cellParagraph(c)] })),
+      },
+      ...bodyRows.map<TiptapNode>((cells) => {
+        const padded = cells.slice(0, cols)
+        while (padded.length < cols) padded.push('')
+        return {
+          type: 'tableRow',
+          content: padded.map((c) => ({ type: 'tableCell', content: [cellParagraph(c)] })),
+        }
+      }),
+    ],
+  }
+}
+
 export function markdownToTiptap(markdown: string): TiptapDocument {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n')
   const content: TiptapNode[] = []
@@ -69,8 +111,24 @@ export function markdownToTiptap(markdown: string): TiptapDocument {
     listBuffer = null
   }
 
-  for (const raw of lines) {
-    const line = raw.replace(/\s+$/, '')
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\s+$/, '')
+
+    // GitHub-style pipe table: a header row followed by a `|---|---|` separator.
+    if (line.includes('|') && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      flushList()
+      const headerCells = splitTableRow(line)
+      i += 1 // consume separator
+      const bodyRows: string[][] = []
+      while (i + 1 < lines.length) {
+        const peek = lines[i + 1]
+        if (!peek.trim() || !peek.includes('|')) break
+        bodyRows.push(splitTableRow(peek))
+        i += 1
+      }
+      content.push(buildTable(headerCells, bodyRows))
+      continue
+    }
 
     if (!line.trim()) {
       flushList()

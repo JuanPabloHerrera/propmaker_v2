@@ -1,104 +1,32 @@
 import { createClient } from '@/lib/supabase/server'
-import { streamPostMeetingChat, generateProposal } from '@/lib/claude'
-import { tiptapToText } from '@/lib/tiptap'
-import { markdownToTiptap } from '@/lib/markdown'
+import { streamPostMeetingChat } from '@/lib/claude'
+import { gatherMeetingInputs } from '@/lib/meeting-inputs'
 import { NextResponse } from 'next/server'
-import type { Meeting, MeetingType, Product, TranscriptSegment } from '@/types'
 
+// Post-meeting Q&A stream. This route ONLY conducts the gap-filling Q&A. When
+// the agent is done (or the consultant skips), it signals `{ toBrief: true }`
+// and the client advances to the /brief screen, where the prioritized synthesis
+// is generated and reviewed before the proposal itself is written.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: meeting } = await supabase
-    .from('meetings')
-    .select('meeting_type, notes_json, selected_categories, attached_product_ids, detected_product_ids')
-    .eq('id', id)
-    .eq('user_id', user.id)
-    .single()
+  const inputs = await gatherMeetingInputs(supabase, id, user.id)
+  if (!inputs) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  if (!meeting) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const {
+    browserTranscript,
+    recallTranscript,
+    notesText,
+    products,
+    referenceProposals,
+    chatHistory,
+    liveChatHistory,
+  } = inputs
 
   const { userMessage, generate } = await request.json()
-
-  // Build partitioned transcripts (browser = primary, recall = fallback)
-  const { data: segments } = await supabase
-    .from('transcript_segments')
-    .select('speaker, text, source')
-    .eq('meeting_id', id)
-    .order('created_at', { ascending: true })
-
-  const rows = (segments as Pick<TranscriptSegment, 'speaker' | 'text' | 'source'>[] | null) ?? []
-  const formatSeg = (s: { speaker: string | null; text: string }) =>
-    `${s.speaker ?? 'Speaker'}: ${s.text}`
-  const browserTranscript = rows.filter((s) => s.source === 'browser').map(formatSeg).join('\n')
-  const recallTranscript = rows.filter((s) => s.source === 'recall').map(formatSeg).join('\n')
-
-  // Notes (Tiptap JSON → plain text)
-  const notesText = tiptapToText((meeting as Pick<Meeting, 'notes_json'>).notes_json)
-
-  // Catalog: union of (products in selected categories) ∪ (explicitly
-  // attached) ∪ (auto-detected from transcript). selected_categories
-  // is a filter; attached + detected are explicit IDs that always
-  // make it into the catalog even if their category was unchecked.
-  const m = meeting as Pick<
-    Meeting,
-    'selected_categories' | 'attached_product_ids' | 'detected_product_ids'
-  >
-  const selected = m.selected_categories ?? []
-  const explicitIds = Array.from(
-    new Set([...(m.attached_product_ids ?? []), ...(m.detected_product_ids ?? [])]),
-  )
-
-  let productsQuery = supabase
-    .from('products')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('active', true)
-  if (selected.length > 0 && explicitIds.length > 0) {
-    productsQuery = productsQuery.or(
-      `category.in.(${selected.map((c) => `"${c}"`).join(',')}),id.in.(${explicitIds.join(',')})`,
-    )
-  } else if (selected.length > 0) {
-    productsQuery = productsQuery.in('category', selected)
-  } else if (explicitIds.length > 0) {
-    // When no category filter is set, we still load everything so the
-    // model has the full catalog — explicit IDs are guaranteed to be
-    // inside it.
-  }
-  const { data: productsData } = await productsQuery
-  const products = (productsData ?? []) as Product[]
-
-  // Reference proposals: the user's past projects (summaries) — context for
-  // "similar past projects" when writing this one.
-  const { data: refData } = await supabase
-    .from('reference_proposals')
-    .select('title, summary')
-    .eq('user_id', user.id)
-    // Style templates (pptx) carry no useful text — keep them out of the prompt.
-    .in('source', ['uploaded', 'app_proposal'])
-    .order('created_at', { ascending: false })
-    .limit(8)
-  const referenceProposals = (refData ?? []) as Array<{ title: string; summary: string }>
-
-  // Fetch existing chat history
-  const { data: existingChat } = await supabase
-    .from('post_meeting_chat')
-    .select('role, content')
-    .eq('meeting_id', id)
-    .order('created_at', { ascending: true })
-
-  const chatHistory = (existingChat ?? []) as Array<{ role: 'user' | 'assistant'; content: string }>
-
-  // Fetch in-meeting co-pilot conversation
-  const { data: liveChat } = await supabase
-    .from('live_meeting_chat')
-    .select('role, content')
-    .eq('meeting_id', id)
-    .order('created_at', { ascending: true })
-
-  const liveChatHistory = (liveChat ?? []) as Array<{ role: 'user' | 'assistant'; content: string }>
 
   if (userMessage) {
     await supabase.from('post_meeting_chat').insert({
@@ -111,72 +39,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const encoder = new TextEncoder()
   const sse = (obj: unknown) => encoder.encode(`data: ${JSON.stringify(obj)}\n\n`)
-
-  // Generate the proposal markdown, persist it (upsert), return the markdown.
-  // Shared by the deterministic "generate" path and the [READY_TO_GENERATE] path.
-  const persistProposal = async (
-    historyForGen: Array<{ role: 'user' | 'assistant'; content: string }>,
-  ): Promise<string> => {
-    const proposalMarkdown = await generateProposal({
-      browserTranscript,
-      recallTranscript,
-      notesText,
-      products,
-      chatHistory: historyForGen,
-      liveChatHistory,
-      meetingType: meeting.meeting_type as MeetingType,
-      referenceProposals,
-    })
-    const content_json = markdownToTiptap(proposalMarkdown)
-    const { data: existing } = await supabase
-      .from('proposals')
-      .select('id')
-      .eq('meeting_id', id)
-      .eq('user_id', user.id)
-      .maybeSingle()
-    if (existing) {
-      await supabase.from('proposals').update({ content_json }).eq('id', existing.id)
-    } else {
-      await supabase.from('proposals').insert({
-        meeting_id: id,
-        user_id: user.id,
-        content_json,
-        status: 'draft',
-      })
-    }
-    return proposalMarkdown
+  const sseHeaders = {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
   }
 
-  // Deterministic generation — bypass the Q&A model entirely and build the
-  // proposal from whatever context exists. Triggered by "Skip questions" /
-  // "Generate proposal now".
+  // Deterministic skip — the consultant clicked "Skip questions" / "Continue".
+  // No proposal is generated here anymore; hand off to the /brief review step.
   if (generate) {
     return new Response(
       new ReadableStream({
-        async start(controller) {
-          try {
-            const proposalMarkdown = await persistProposal(chatHistory)
-            controller.enqueue(sse({ proposal: proposalMarkdown }))
-          } catch (err) {
-            const message = err instanceof Error ? err.message : 'Failed to generate proposal'
-            console.error('[proposal/chat generate]', message)
-            controller.enqueue(sse({ error: message }))
-          }
+        start(controller) {
+          controller.enqueue(sse({ toBrief: true }))
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
           controller.close()
         },
       }),
-      {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-        },
-      },
+      { headers: sseHeaders },
     )
   }
 
-  // Replay last assistant message if user just reopened the page
+  // Replay last assistant message if the user just reopened the page.
   if (
     !userMessage &&
     !generate &&
@@ -192,7 +76,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           controller.close()
         },
       }),
-      { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' } }
+      { headers: sseHeaders },
     )
   }
 
@@ -224,15 +108,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         content: fullText,
       })
 
+      // The agent has enough — advance the client to the brief review step.
       if (fullText.includes('[READY_TO_GENERATE]')) {
-        // Persist before signalling the client so the proposal page can
-        // read it on first load — the QA page redirects immediately and
-        // the markdown would otherwise vanish.
-        const proposalMarkdown = await persistProposal([
-          ...chatHistory,
-          { role: 'assistant' as const, content: fullText },
-        ])
-        controller.enqueue(sse({ proposal: proposalMarkdown }))
+        controller.enqueue(sse({ toBrief: true }))
       }
 
       controller.enqueue(encoder.encode('data: [DONE]\n\n'))
@@ -240,11 +118,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     },
   })
 
-  return new Response(readableStream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  })
+  return new Response(readableStream, { headers: sseHeaders })
 }

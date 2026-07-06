@@ -13,6 +13,45 @@ export interface MeetingAttendee {
   color?: string
 }
 
+export type BriefPriorityLevel = 'high' | 'medium' | 'low'
+
+/** A single prioritized, defined, actionable item distilled from the meeting. */
+export interface BriefActionItem {
+  title: string
+  detail: string
+  priority: BriefPriorityLevel
+}
+
+/**
+ * The pre-proposal synthesis. Generated after the post-meeting Q&A from every
+ * input (transcript, notes, Q&A, in-meeting co-pilot, catalog, references, and
+ * the pre-meeting context/attendee/client metadata) and reviewed/edited by the
+ * consultant on the /brief screen before the proposal is generated. Stored on
+ * `meetings.proposal_brief` (jsonb).
+ */
+export interface ProposalBrief {
+  /** 2–4 sentence synthesis of the engagement. */
+  overview: string
+  /** What the client said they want to achieve. */
+  clientGoals: string[]
+  /** Prioritized, defined, actionable items — the backbone of the proposal. */
+  priorities: BriefActionItem[]
+  /** In-scope work, as concrete bullets. */
+  scope: string[]
+  /** Explicitly out of scope / deferred. */
+  outOfScope: string[]
+  /** Catalog product names to feature (must come from the user's catalog). */
+  recommendedProducts: string[]
+  /** Budget signals / constraints heard in the meeting. */
+  budgetNotes: string | null
+  /** Timeline / deadline signals heard in the meeting. */
+  timelineNotes: string | null
+  /** Unresolved items that still need clarification. */
+  openQuestions: string[]
+  /** ISO timestamp stamped server-side when generated. */
+  generatedAt: string | null
+}
+
 export interface UserProfile {
   user_id: string
   full_name: string | null
@@ -51,6 +90,7 @@ export interface Meeting {
   detected_product_ids: string[]
   deal_status: DealStatus
   live_partial: string | null
+  proposal_brief: ProposalBrief | null
   created_at: string
   updated_at: string
 }

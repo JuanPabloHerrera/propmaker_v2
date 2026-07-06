@@ -55,7 +55,7 @@ export function QAToolbar({ meeting, questionIndex, totalQuestions, onSkip, disa
             cursor: disabled ? 'not-allowed' : 'pointer',
           }}
         >
-          {busy ? 'Generating…' : 'Skip questions'}
+          {busy ? 'Preparing…' : 'Skip questions'}
         </button>
       </div>
 
