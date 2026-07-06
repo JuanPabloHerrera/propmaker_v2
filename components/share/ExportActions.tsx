@@ -4,6 +4,7 @@ import * as React from 'react'
 import { toast } from 'sonner'
 import { Icon } from '@/components/ui/icon'
 import { downloadProposalPptx } from '@/lib/download-pptx'
+import type { ReferenceProposal } from '@/types'
 
 interface Props {
   meetingId: string
@@ -15,6 +16,21 @@ interface Props {
 
 export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Props) {
   const [exporting, setExporting] = React.useState(false)
+  const [templates, setTemplates] = React.useState<ReferenceProposal[]>([])
+  const [templateId, setTemplateId] = React.useState('')
+
+  React.useEffect(() => {
+    ;(async () => {
+      try {
+        const res = await fetch('/api/reference-proposals')
+        if (!res.ok) return
+        const rows = (await res.json()) as ReferenceProposal[]
+        setTemplates(rows.filter((r) => r.source === 'pptx_template'))
+      } catch {
+        /* non-fatal — just no templates offered */
+      }
+    })()
+  }, [])
 
   function comingSoon(label: string) {
     toast.info(`${label} export coming soon.`)
@@ -24,7 +40,7 @@ export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Pro
     if (exporting) return
     setExporting(true)
     try {
-      await downloadProposalPptx(proposalId)
+      await downloadProposalPptx(proposalId, templateId || null)
     } finally {
       setExporting(false)
     }
@@ -45,6 +61,26 @@ export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Pro
       className="card flex flex-col gap-2.5"
       style={{ padding: 14 }}
     >
+      {templates.length > 0 && (
+        <label className="flex flex-col gap-1">
+          <span style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>
+            PowerPoint style template
+          </span>
+          <select
+            className="field"
+            style={{ height: 30, fontSize: 12, padding: '0 8px' }}
+            value={templateId}
+            onChange={(e) => setTemplateId(e.target.value)}
+          >
+            <option value="">None · brand colors</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="flex gap-2.5">
         <button
           type="button"

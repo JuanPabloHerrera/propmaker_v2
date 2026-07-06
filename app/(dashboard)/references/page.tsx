@@ -12,7 +12,7 @@ interface ProposalOption {
   label: string
 }
 
-const ACCEPT = '.pdf,.docx,.txt,.md,.markdown'
+const ACCEPT = '.pdf,.docx,.txt,.md,.markdown,.pptx'
 
 export default function ReferencesPage() {
   const supabase = React.useMemo(() => createClient(), [])
@@ -214,7 +214,7 @@ export default function ReferencesPage() {
                     {busy ? 'Processing…' : 'Choose a file'}
                   </div>
                   <div className="text-[11px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
-                    PDF, DOCX, TXT or MD · up to 15 MB
+                    PDF, DOCX, TXT, MD · or a .PPTX style template
                   </div>
                 </button>
                 <input

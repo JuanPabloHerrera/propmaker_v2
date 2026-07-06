@@ -1,7 +1,7 @@
 import PptxGenJS from 'pptxgenjs'
 import { pickBrandTokens } from '@/lib/brand'
 import { tiptapToSections, inlineText, type ProposalSection } from '@/lib/tiptap'
-import type { Meeting, TiptapDocument, TiptapNode, UserProfile } from '@/types'
+import type { Meeting, PptxTheme, TiptapDocument, TiptapNode, UserProfile } from '@/types'
 
 // ---------------------------------------------------------------------------
 // PowerPoint (PPTX) generation for proposals.
@@ -17,7 +17,7 @@ import type { Meeting, TiptapDocument, TiptapNode, UserProfile } from '@/types'
 // logo (a public Supabase Storage URL) is fetched and embedded as a data URI.
 // ---------------------------------------------------------------------------
 
-const FONT = 'Arial' // universally installed — Geist isn't present on viewers' machines
+const FONT = 'Arial' // default face — Geist isn't present on viewers' machines
 const SAGE = '4d8a6b'
 const INK = '2b2620'
 const MUTED = '6B6259'
@@ -37,10 +37,34 @@ const MAX_SLIDES = 60 // guardrail against pathological input
 const hex = (c: string | undefined, fallback: string): string =>
   c && /^#?[0-9a-f]{3,6}$/i.test(c) ? c.replace('#', '') : fallback
 
+/** Pick black or white text that reads on the given fill color. */
+function readableOn(fill: string): string {
+  const h = fill.replace('#', '')
+  const n = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+  const r = parseInt(n.slice(0, 2), 16) || 0
+  const g = parseInt(n.slice(2, 4), 16) || 0
+  const b = parseInt(n.slice(4, 6), 16) || 0
+  // Perceived brightness (YIQ); light fills → dark text.
+  return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? '111111' : 'FFFFFF'
+}
+
+interface Background {
+  type: 'color' | 'image'
+  color?: string
+  dataUri?: string
+}
+
 interface Theme {
   accent: string
   accent2: string
   ink: string
+  muted: string
+  faint: string
+  hairline: string
+  majorFont: string
+  minorFont: string
+  zebra: [string, string]
+  background: Background
 }
 
 export interface BuildProposalPptxInput {
@@ -49,6 +73,48 @@ export interface BuildProposalPptxInput {
   profile: UserProfile | null
   /** Human-readable "prepared on" date, formatted by the caller. */
   preparedOn?: string
+  /** When set, styles the deck from an uploaded .pptx template instead of brand colors. */
+  template?: PptxTheme | null
+}
+
+/** Build the render theme from a template (preferred) or the user's brand colors. */
+function resolveTheme(template: PptxTheme | null | undefined, profile: UserProfile | null): Theme {
+  if (template) {
+    return {
+      accent: hex(template.accent, SAGE),
+      accent2: hex(template.accent2, hex(template.accent, SAGE)),
+      ink: hex(template.ink, INK),
+      muted: hex(template.muted, MUTED),
+      faint: hex(template.faint, FAINT),
+      hairline: hex(template.hairline, HAIRLINE),
+      majorFont: template.majorFont || FONT,
+      minorFont: template.minorFont || template.majorFont || FONT,
+      zebra: [hex(template.zebra?.[0], 'FBFAF7'), hex(template.zebra?.[1], 'FFFFFF')],
+      background:
+        template.background?.type === 'image' && template.background.dataUri
+          ? { type: 'image', dataUri: template.background.dataUri }
+          : { type: 'color', color: hex(template.background?.color, 'FFFFFF') },
+    }
+  }
+  const t = pickBrandTokens(profile?.brand_colors)
+  const accent = hex(t.accent, SAGE)
+  return {
+    accent,
+    accent2: hex(t.accent2, accent),
+    ink: hex(t.ink, INK),
+    muted: MUTED,
+    faint: FAINT,
+    hairline: HAIRLINE,
+    majorFont: FONT,
+    minorFont: FONT,
+    zebra: ['FBFAF7', 'FFFFFF'],
+    background: { type: 'color', color: 'FFFFFF' },
+  }
+}
+
+/** Convert a theme background into a pptxgenjs BackgroundProps. */
+function bgProps(bg: Background): PptxGenJS.BackgroundProps {
+  return bg.type === 'image' && bg.dataUri ? { data: bg.dataUri } : { color: bg.color ?? 'FFFFFF' }
 }
 
 /**
@@ -60,14 +126,9 @@ export async function buildProposalPptx({
   meeting,
   profile,
   preparedOn,
+  template,
 }: BuildProposalPptxInput): Promise<Buffer> {
-  const t = pickBrandTokens(profile?.brand_colors)
-  const accent = hex(t.accent, SAGE)
-  const theme: Theme = {
-    accent,
-    accent2: hex(t.accent2, accent),
-    ink: hex(t.ink, INK),
-  }
+  const theme = resolveTheme(template, profile)
   const logo = await fetchLogoDataUri(profile?.logo_url ?? null)
 
   const pptx = new PptxGenJS()
@@ -79,7 +140,7 @@ export async function buildProposalPptx({
   const footer = profile?.company_name ?? profile?.full_name ?? 'PropMaker'
   pptx.defineSlideMaster({
     title: 'PM_CONTENT',
-    background: { color: 'FFFFFF' },
+    background: bgProps(theme.background),
     objects: [
       { rect: { x: 0, y: 7.19, w: '100%', h: 0.02, fill: { color: theme.accent } } },
       {
@@ -90,9 +151,9 @@ export async function buildProposalPptx({
             y: 7.02,
             w: 9,
             h: 0.32,
-            fontFace: FONT,
+            fontFace: theme.minorFont,
             fontSize: 8,
-            color: FAINT,
+            color: theme.faint,
             valign: 'middle',
           },
         },
@@ -103,9 +164,9 @@ export async function buildProposalPptx({
       y: 7.02,
       w: 0.9,
       h: 0.32,
-      fontFace: FONT,
+      fontFace: theme.minorFont,
       fontSize: 8,
-      color: FAINT,
+      color: theme.faint,
       align: 'right',
     },
   })
@@ -143,7 +204,7 @@ function addCoverSlide(
 ) {
   const { meeting, profile, theme, logo, preparedOn } = opts
   const slide = pptx.addSlide()
-  slide.background = { color: 'FFFFFF' }
+  slide.background = bgProps(theme.background)
 
   // Accent bars top + bottom.
   slide.addShape('rect', {
@@ -184,7 +245,7 @@ function addCoverSlide(
     y: 2.55,
     w: CONTENT_W,
     h: 0.45,
-    fontFace: FONT,
+    fontFace: theme.majorFont,
     fontSize: 14,
     bold: true,
     color: theme.accent,
@@ -196,7 +257,7 @@ function addCoverSlide(
     y: 3.0,
     w: CONTENT_W - 1.5,
     h: 1.7,
-    fontFace: FONT,
+    fontFace: theme.majorFont,
     fontSize: 42,
     bold: true,
     color: theme.ink,
@@ -213,28 +274,28 @@ function addCoverSlide(
       y: 4.7,
       w: CONTENT_W,
       h: 0.5,
-      fontFace: FONT,
+      fontFace: theme.minorFont,
       fontSize: 16,
-      color: MUTED,
+      color: theme.muted,
     })
   }
 
   // Prepared-by block near the bottom.
   const company = profile?.company_name ?? profile?.full_name ?? 'PropMaker'
   const preparedRuns: PptxGenJS.TextProps[] = [
-    { text: 'Prepared by ', options: { color: MUTED, fontSize: 13 } },
+    { text: 'Prepared by ', options: { color: theme.muted, fontSize: 13 } },
     { text: company, options: { color: theme.ink, fontSize: 13, bold: true, breakLine: true } },
   ]
   if (profile?.tagline) {
     preparedRuns.push({
       text: profile.tagline,
-      options: { color: MUTED, fontSize: 11.5, breakLine: true },
+      options: { color: theme.muted, fontSize: 11.5, breakLine: true },
     })
   }
   if (preparedOn) {
     preparedRuns.push({
       text: preparedOn,
-      options: { color: FAINT, fontSize: 10.5, breakLine: true },
+      options: { color: theme.faint, fontSize: 10.5, breakLine: true },
     })
   }
   slide.addText(preparedRuns, {
@@ -242,7 +303,7 @@ function addCoverSlide(
     y: 5.85,
     w: CONTENT_W,
     h: 1.1,
-    fontFace: FONT,
+    fontFace: theme.minorFont,
     valign: 'top',
   })
 }
@@ -306,7 +367,7 @@ function addContentSlides(
         y: BODY_TOP,
         w: CONTENT_W,
         h: BODY_H,
-        fontFace: FONT,
+        fontFace: theme.minorFont,
         color: theme.ink,
         valign: 'top',
         fit: 'shrink',
@@ -328,7 +389,7 @@ function addSlideHeading(
     y: 0.62,
     w: CONTENT_W,
     h: 0.6,
-    fontFace: FONT,
+    fontFace: theme.majorFont,
     fontSize: 22,
     bold: true,
     color: theme.accent,
@@ -383,7 +444,7 @@ function walkBlocks(
       case 'paragraph': {
         if (!inlineText(node.content)) break
         const para: PptxGenJS.TextPropsOptions = {
-          color: quote ? MUTED : theme.ink,
+          color: quote ? theme.muted : theme.ink,
           italic: quote || undefined,
           fontSize: 13,
           paraSpaceAfter: list ? 3 : 7,
@@ -413,9 +474,9 @@ function walkBlocks(
         const text = inlineText(node.content)
         if (!text) break
         pushPara(out, [{ text, options: { fontFace: 'Courier New' } }], {
-          color: MUTED,
+          color: theme.muted,
           fontSize: 11,
-          fill: { color: 'F5F3EF' },
+          fill: { color: theme.zebra[0] },
           paraSpaceAfter: 6,
         })
         break
@@ -522,7 +583,7 @@ function addTableSlide(
       y: BODY_TOP,
       w: CONTENT_W,
       h: introH,
-      fontFace: FONT,
+      fontFace: theme.minorFont,
       color: theme.ink,
       valign: 'top',
       fit: 'shrink',
@@ -534,6 +595,7 @@ function addTableSlide(
   const colW = columnWidths(headers)
   const rightCol = headers.map((h) => /price|amount|total|cost|qty|quantity|rate|value|subtotal/i.test(h))
 
+  const headerText = readableOn(theme.accent)
   const tableRows: PptxGenJS.TableRow[] = rows.map((row, ri) => {
     const cells = row.content ?? []
     return cells.map((cell, ci) => {
@@ -542,7 +604,7 @@ function addTableSlide(
         ri === 0
           ? {
               fill: { color: theme.accent },
-              color: 'FFFFFF',
+              color: headerText,
               bold: true,
               valign: 'middle',
               align: rightCol[ci] ? 'right' : 'left',
@@ -552,7 +614,7 @@ function addTableSlide(
               color: theme.ink,
               valign: 'middle',
               align: rightCol[ci] ? 'right' : 'left',
-              fill: { color: ri % 2 === 0 ? 'FBFAF7' : 'FFFFFF' },
+              fill: { color: ri % 2 === 0 ? theme.zebra[0] : theme.zebra[1] },
               margin: [4, 6, 4, 6],
             }
       return { text, options }
@@ -564,11 +626,11 @@ function addTableSlide(
     y: tableY,
     w: CONTENT_W,
     colW,
-    fontFace: FONT,
+    fontFace: theme.minorFont,
     fontSize: 11,
     color: theme.ink,
     valign: 'middle',
-    border: { type: 'solid', pt: 0.5, color: HAIRLINE },
+    border: { type: 'solid', pt: 0.5, color: theme.hairline },
     // NOTE: a table-level `margin` breaks pptxgenjs autoPage ("Array expected"),
     // so cell padding is set per-cell below instead.
     autoPage: true,

@@ -19,6 +19,17 @@ export function isAcceptedReferenceFile(name: string, mime: string): boolean {
   return /\.(txt|md|markdown)$/i.test(name)
 }
 
+export const PPTX_MIME =
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+
+/**
+ * A .pptx uploaded as a *style template* (handled separately from text
+ * references — stored + parsed for its theme, never summarized).
+ */
+export function isPptxFile(name: string, mime: string): boolean {
+  return mime === PPTX_MIME || /\.pptx$/i.test(name)
+}
+
 export async function extractDocxText(buffer: ArrayBuffer): Promise<string> {
   const result = await mammoth.extractRawText({ arrayBuffer: buffer })
   return (result.value || '').slice(0, MAX_REFERENCE_CHARS)

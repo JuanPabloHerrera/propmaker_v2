@@ -118,7 +118,31 @@ export interface ProposalShare {
   message_body: string | null
 }
 
-export type ReferenceProposalSource = 'uploaded' | 'app_proposal'
+export type ReferenceProposalSource = 'uploaded' | 'app_proposal' | 'pptx_template'
+
+/** Slide background extracted from a template deck (hex colors carry no '#'). */
+export interface PptxThemeBackground {
+  type: 'color' | 'image'
+  color?: string
+  dataUri?: string
+}
+
+/**
+ * Visual theme extracted from an uploaded .pptx template — colors, fonts, and
+ * background — used to style the exported proposal deck. All hex values omit '#'.
+ */
+export interface PptxTheme {
+  accent: string
+  accent2: string
+  ink: string
+  muted: string
+  faint: string
+  hairline: string
+  majorFont: string
+  minorFont: string
+  background?: PptxThemeBackground
+  zebra: [string, string]
+}
 
 export interface ReferenceProposal {
   id: string
@@ -129,6 +153,9 @@ export interface ReferenceProposal {
   source: ReferenceProposalSource
   source_proposal_id: string | null
   original_filename: string | null
+  // Only set for source==='pptx_template': storage path + extracted display theme.
+  file_path?: string | null
+  theme_json?: PptxTheme | null
   created_at: string
   updated_at: string
 }

@@ -82,6 +82,8 @@ export async function POST(
     .from('reference_proposals')
     .select('title, summary')
     .eq('user_id', user.id)
+    // Style templates (pptx) carry no useful text — keep them out of the prompt.
+    .in('source', ['uploaded', 'app_proposal'])
     .order('created_at', { ascending: false })
     .limit(8)
   const referenceProposals = (refData ?? []) as Array<{ title: string; summary: string }>
