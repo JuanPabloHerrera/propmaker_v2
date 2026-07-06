@@ -16,6 +16,10 @@ const ACCEPT = '.pdf,.docx,.txt,.md,.markdown,.pptx'
 const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 const DECK_BUCKET = 'reference-decks'
 
+// Upload size limits.
+const PPTX_MAX_BYTES = 25 * 1024 * 1024 // reference-decks bucket file_size_limit
+const FILE_MAX_BYTES = 4.5 * 1024 * 1024 // non-pptx go via the API — Vercel's ~4.5MB body cap
+
 function isPptx(file: File): boolean {
   return file.type === PPTX_MIME || /\.pptx$/i.test(file.name)
 }
@@ -112,6 +116,19 @@ export default function ReferencesPage() {
     if (!file && !pasted.trim()) {
       toast.error('Choose a file or paste the proposal text.')
       return
+    }
+
+    if (file) {
+      const pptx = isPptx(file)
+      const max = pptx ? PPTX_MAX_BYTES : FILE_MAX_BYTES
+      if (file.size > max) {
+        const limitMb = (max / 1024 / 1024).toFixed(max % (1024 * 1024) ? 1 : 0)
+        toast.error(
+          `${pptx ? 'PowerPoint templates' : 'PDF/DOCX/text files'} must be under ${limitMb} MB — ` +
+            `this one is ${(file.size / 1024 / 1024).toFixed(1)} MB.`,
+        )
+        return
+      }
     }
 
     setBusy(true)
@@ -259,7 +276,7 @@ export default function ReferencesPage() {
                     {busy ? 'Processing…' : 'Choose a file'}
                   </div>
                   <div className="text-[11px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
-                    PDF, DOCX, TXT, MD · or a .PPTX style template
+                    PDF, DOCX, TXT, MD (up to 4.5 MB) · .PPTX template (up to 25 MB)
                   </div>
                 </button>
                 <input
