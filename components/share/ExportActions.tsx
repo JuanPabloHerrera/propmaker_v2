@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { toast } from 'sonner'
 import { Icon } from '@/components/ui/icon'
-import { downloadProposalPptx } from '@/lib/download-pptx'
+import { downloadProposalPptx, startBrandedDeckBuild } from '@/lib/download-pptx'
 import type { ReferenceProposal } from '@/types'
 
 interface Props {
@@ -16,8 +16,12 @@ interface Props {
 
 export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Props) {
   const [exporting, setExporting] = React.useState(false)
+  const [buildLabel, setBuildLabel] = React.useState('')
   const [templates, setTemplates] = React.useState<ReferenceProposal[]>([])
   const [templateId, setTemplateId] = React.useState('')
+  const ctrlRef = React.useRef<AbortController | null>(null)
+
+  React.useEffect(() => () => ctrlRef.current?.abort(), [])
 
   React.useEffect(() => {
     ;(async () => {
@@ -38,11 +42,42 @@ export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Pro
 
   async function exportPptx() {
     if (exporting) return
+    if (!proposalId) {
+      toast.info('Save the proposal first.')
+      return
+    }
+    // No template → instant fast branded deck. Template → Claude reproduces the
+    // template on every slide via its pptx skill (a couple-minute background job).
+    if (!templateId) {
+      setExporting(true)
+      try {
+        await downloadProposalPptx(proposalId, null)
+      } finally {
+        setExporting(false)
+      }
+      return
+    }
     setExporting(true)
+    setBuildLabel('Building…')
+    const ctrl = new AbortController()
+    ctrlRef.current = ctrl
+    toast.info(
+      'Building your branded deck — this takes a couple of minutes. The download starts automatically when it’s ready.',
+    )
     try {
-      await downloadProposalPptx(proposalId, templateId || null)
+      await startBrandedDeckBuild(proposalId, templateId, {
+        signal: ctrl.signal,
+        onStatus: (s) => setBuildLabel(s === 'succeeded' ? 'Done' : 'Building…'),
+      })
+      toast.success('Your branded deck is ready.')
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'AbortError')) {
+        toast.error(e instanceof Error ? e.message : 'Export failed')
+      }
     } finally {
       setExporting(false)
+      setBuildLabel('')
+      ctrlRef.current = null
     }
   }
 
@@ -116,7 +151,7 @@ export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Pro
           }}
         >
           <Icon name="box" size={12} />
-          {exporting ? 'Exporting…' : 'PowerPoint'}
+          {exporting ? buildLabel || 'Exporting…' : 'PowerPoint'}
         </button>
         <button
           type="button"
