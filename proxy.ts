@@ -2,6 +2,14 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
+  // RSC prefetch requests (<Link> prefetching) are cache-warming only. Running the
+  // Supabase session refresh on them writes Set-Cookie / can redirect, which Safari
+  // blocks on prefetch fetches ("Fetch API cannot load … due to access control checks").
+  // Skip them — real navigations (no prefetch header) still run the full auth gate below.
+  if (request.headers.get('next-router-prefetch') === '1') {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
