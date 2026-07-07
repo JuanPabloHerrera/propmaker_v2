@@ -1,93 +1,98 @@
 # Replicar un template exacto (modo "réplica")
 
-Cuando el usuario quiere que la salida **respete el template real** (mismo fondo,
-estilo, títulos, layout) y no un diseño propio, se reconstruye el template en
-pptxgenjs con **medidas exactas** y se **re-incrustan las imágenes reales** del
-template; luego se rellenan las zonas de contenido con la narrativa de la propuesta.
-El generador reconstruido es a la vez la **réplica** (import/template reutilizable) y,
-relleno, la **salida final**.
+Cuando el usuario quiere que la salida **respete el template real** (mismo fondo, estilo,
+títulos, tamaños, formas — TODO), se **mide** el template y se **reproduce forma por forma** en
+pptxgenjs, re-incrustando las imágenes reales; luego se sustituye el texto de las formas de
+contenido por la narrativa de la propuesta. El generador reconstruido es la **réplica**
+(reutilizable) y, con overrides, la **salida final**.
 
-> Modo alterno: si NO hay que calcar un template (diseño desde cero con la marca),
-> usa `scripts/build_deck.js` (ver SKILL.md, modo B).
+> Modo alterno: si NO hay que calcar un template (diseño desde cero con la marca), usa
+> `scripts/build_deck.js` (ver SKILL.md, modo B).
 
 ## Por qué así (hallazgo real)
 
-Los templates tipo MoveMinds guardan el DISEÑO en los **slide LAYOUTS**: cada layout
-trae un **fondo full-bleed como imagen** (`<p:pic>` 13.33×7.5) + logos + formas +
-títulos; los slides sólo referencian un layout y rellenan texto. Por eso medimos
-layouts **y** slides. Reproducir eso "a ojo" no funciona; hay que **medirlo**.
+En estos templates el DISEÑO vive en los slide **LAYOUTS**: cada layout trae un **fondo
+full-bleed como imagen** + un **rectángulo overlay semi-transparente** (contraste) + formas de
+color (rect/roundRect/ellipse) + logos + texto. Los slides sólo referencian un layout. Por eso
+medimos layouts **y** slides, con TODO: geometría, fondos, imágenes, y por forma su
+relleno/transparencia/borde/tipo + texto enriquecido. Reproducir "a ojo" no funciona; se mide.
 
-## Paso 1 — Medir el template
+## Paso 1 — Setup
+
+```bash
+bash scripts/setup.sh   # incluye python-pptx (medición) + deps de generación
+```
+
+## Paso 2 — Medir el template
 
 ```bash
 python scripts/inspect_template.py <template.pptx>        # escribe en la raíz de trabajo
 ```
 Produce:
-- `template_spec.json` — por **layout** y **slide**: tamaño, tema (fuentes/colores) y,
-  por forma: `kind`, `placeholder`, geometría `xIn/yIn/wIn/hIn` (pulgadas), `text`,
-  `font` (face, sizePt, bold, color, align) e `image`+`fullbleed` en las imágenes.
+- `template_spec.json` — por **layout** y **slide**, y por forma: `preset` (rect/roundRect/
+  ellipse), `fill` (color + `transparency`), `line`, `rotation`, geometría `xIn/yIn/wIn/hIn`
+  (pulgadas), y `richText` (párrafos→runs con fuente/tamaño/negrita/color/alineación). Los
+  grupos se **aplanan** (sus hijos aparecen con coords absolutas). Incluye `theme` (fuentes/colores).
 - `assets/backgrounds/*` — el **fondo real full-bleed** de cada layout (byte-idéntico).
 - `assets/media/*` — logos y decoraciones (deduplicados por contenido).
+- `template_layouts_preview.pptx` — **un slide por layout** (para el análisis VISUAL del paso 3).
 
-## Paso 2 — Reconstruir cada slide (pptxgenjs)
+## Paso 3 — Análisis VISUAL (thumbnails)
 
-Parte de `scripts/replica_deck.js` (andamio con 2 slides de ejemplo ya reconstruidos
-de un template real). Para **cada** layout/slide del spec, escribe una función que:
+Renderiza a imágenes temporales el preview de layouts **y** los slides originales, y **míralos**
+con `view` para entender el sistema de diseño (jerarquía, espaciado, imágenes, uso de color) y
+cruzar-verificar la medición:
+```bash
+python /mnt/skills/public/pptx/scripts/office/soffice.py --headless --convert-to pdf template_layouts_preview.pptx
+rm -f tpl-*.jpg && pdftoppm -jpeg -r 110 template_layouts_preview.pdf tpl
+# (alternativa: python /mnt/skills/public/pptx/scripts/thumbnail.py template_layouts_preview.pptx)
+```
+Revisa cada `tpl-*.jpg` con `view`. En el preview, el slide 1 es el original y los siguientes
+son **un layout cada uno**. Anota qué layout usar para cada parte de la propuesta y qué formas
+son "contenido" (a sustituir) vs. "marca/estructura" (a conservar).
 
-1. **Fondo real:** `bgFull(slide, "assets/backgrounds/L<n>_pic.jpg")` (la ruta sale de
-   `layout.background` en el spec).
-2. **Decoración/logos:** `addImageAt(slide, "assets/media/…", x, y, w, h)` con las
-   coords del spec (pulgadas).
-3. **Títulos del template:** `textAt(slide, "<título>", x, y, w, h, {face,size,bold,color,align})`
-   copiando texto/posición/fuente del spec. **Consérvalos** salvo que la propuesta pida cambiarlos.
-4. **Zonas de contenido:** identifica la caja de texto grande del layout (la de mayor
-   área con texto, o el placeholder BODY) y rellénala con la narrativa vía `textAt`.
+## Paso 4 — Reconstruir con `replica_deck.js` (spec-driven)
 
-Copia las coordenadas del spec **tal cual** — están en pulgadas y pptxgenjs usa pulgadas.
-Colores en hex sin `#`. Fuente: la del template (abajo).
+`replica_deck.js` **reproduce automáticamente** cada forma del spec (fondo, formas con relleno/
+transparencia/borde, imágenes, texto enriquecido). Tú sólo editas el bloque **`DECK`**:
 
-## Paso 3 — Mapear la narrativa
+```bash
+node scripts/replica_deck.js --list      # imprime, por layout/slide, el índice y texto de cada forma
+```
+En `scripts/replica_deck.js` edita:
+- **`DECK`** — una entrada por slide de salida: `{ from:"layout"|"slide", index:<n>, overrides:{ "<shapeIndex>":"texto de la propuesta" } }`. Elige qué layouts usar, en qué orden, y qué formas rellenar con la narrativa (mapa: `references/propmaker-narrative-map.md` — conserva títulos del template, sustituye contenido). Los índices salen de `--list`.
+- **`meta.fileName`** — `Replica_<Cliente>.pptx`.
+Todo lo NO incluido en `overrides` se reproduce idéntico al template.
 
-Rellena las zonas de contenido con el `ProposalBrief`/documento (ver
-`references/propmaker-narrative-map.md`): **mantén los títulos del template** y coloca el
-cuerpo en la región medida de cada slide. Lo que la propuesta no aporte se omite o queda
-«Por confirmar». Sin precios por defecto.
+## Paso 5 — Generar y QA visual
+
+```bash
+node scripts/replica_deck.js
+python /mnt/skills/public/pptx/scripts/rezip.py Replica_<Cliente>.pptx
+python /mnt/skills/public/pptx/scripts/office/soffice.py --headless --convert-to pdf Replica_<Cliente>.pptx
+rm -f rep-*.jpg && pdftoppm -jpeg -r 110 Replica_<Cliente>.pdf rep
+```
+Compara cada `rep-*.jpg` con su `tpl-*.jpg` (paso 3) **lado a lado** con `view`: mismo fondo,
+mismas formas/posiciones/tamaños, mismo estilo de texto, sin desbordes ni solapes, sin texto de
+ejemplo del template. Ajusta coords/overrides, re-genera lo afectado, repite hasta que calce.
 
 ## Fuentes
 
-El template usa **Open Sans** (los runs lo declaran; el tema cae a Calibri). Úsala en el
-generador (`FONT = "Open Sans"`). Para que el **QA visual** y el render del cliente la
-muestren fiel, instálala en el entorno:
+El template declara su fuente (aquí runs en **Open Sans**; tema en Calibri). El renderer usa la
+fuente medida por forma. Para QA/render fiel instálala:
 ```bash
-fc-list | grep -i "open sans" || echo "instala Open Sans (p.ej. fonts-open-sans) para QA fiel"
+fc-list | grep -i "open sans" || echo "instala Open Sans para un preview fiel"
 ```
-Si no está, LibreOffice sustituye la fuente en el preview (el ancho cambia); PowerPoint del
-cliente la renderiza bien si la tiene instalada.
-
-## Paso 4 — Generar y QA
-
-```bash
-node scripts/replica_deck.js                     # (DRY_RUN=1 para no escribir)
-python /mnt/skills/public/pptx/scripts/rezip.py <fileName>.pptx
-# QA visual: compara CADA slide contra el original del template
-python /mnt/skills/public/pptx/scripts/office/soffice.py --headless --convert-to pdf <fileName>.pptx
-rm -f slide-*.jpg && pdftoppm -jpeg -r 110 <fileName>.pdf slide
-# (opcional) render del template original para comparar lado a lado:
-python /mnt/skills/public/pptx/scripts/thumbnail.py <template.pptx>
-```
-Revisa cada `slide-*.jpg` con `view` **junto al slide original**. Fidelidad:
-- Fondo idéntico (se re-incrustó la imagen real → debe calzar exacto).
-- Título en la misma posición/fuente/tamaño/color/alineación.
-- Contenido dentro de su región, sin desbordes ni solapes; contraste correcto.
-- Logos/decoración en su lugar.
-Ajusta coords/tamaños, re-genera lo afectado, repite hasta que calce.
+Sin ella, LibreOffice sustituye la fuente (el ancho cambia); PowerPoint del cliente la
+renderiza bien si la tiene.
 
 ## Caveats (honestos)
 
-- **Mejor esfuerzo, no garantiza pixel-perfect.** Los fondos se re-incrustan exactos
-  (imágenes reales); títulos/cajas/decoración se reproducen desde geometría medida (muy
-  cerca). Degradados, grupos, SmartArt, gráficos y efectos "horneados" pueden no calzar al
-  100% — el **QA visual** cierra la brecha.
-- **Por template, guiado por el agente, en la nube** (python-pptx + LibreOffice + el stack).
-- El generador reconstruido es **reutilizable**: replica una vez (import), rellena por
-  propuesta (salida final).
+- **Mejor esfuerzo, no pixel-perfect.** Fondos exactos (imágenes reales, byte-idénticas). Formas
+  básicas (rect/roundRect/ellipse, rellenos sólidos + transparencia), texto y logos se
+  reproducen fielmente (este template no tiene freeforms). Degradados y efectos de imagen se
+  aproximan; el QA visual cierra la brecha.
+- Los thumbnails (`tpl-*.jpg`, `rep-*.jpg`) y `template_layouts_preview.pptx` son **artefactos
+  temporales** de QA, no el entregable.
+- **Por template, guiado por el agente, en la nube.** El generador reconstruido es reutilizable:
+  replica una vez (import), rellena por propuesta (salida final).

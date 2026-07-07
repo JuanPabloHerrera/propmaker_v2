@@ -21,10 +21,12 @@ No usar para: minutas, documentos Word (usa `docx`), o cuando no hay template de
 ## Dos modos — elige antes de empezar
 
 - **Modo A · REPLICAR el template exacto** (cuando el usuario quiere que la salida **respete
-  el template real**: mismo fondo, estilo, títulos, layout). Se **mide** el template con
-  `scripts/inspect_template.py` (geometría en pulgadas + fondos + assets reales), se
-  **reconstruye** cada slide en `scripts/replica_deck.js` re-incrustando las imágenes reales,
-  y se rellenan las zonas de contenido con la narrativa. **Guía: `references/template-replication.md`.**
+  el template real**: mismo fondo, estilo, TÍTULOS, tamaños y **todas las formas** — no sólo
+  colores y fuentes). Se **mide** el template con `scripts/inspect_template.py` (por forma:
+  preset, relleno + transparencia, borde, rotación, texto enriquecido, imágenes/fondos reales;
+  aplana grupos) **y se analiza visualmente** (thumbnails de cada layout con `view`).
+  `scripts/replica_deck.js` **reproduce cada forma** del spec automáticamente y sólo sustituye
+  el texto de contenido por la narrativa. **Guía: `references/template-replication.md`.**
   Úsalo cuando el template sea un deck diseñado (fondos full-bleed, layouts propios).
 - **Modo B · Diseño propio branded** (cuando NO hay que calcar un template: se extrae la marca
   y se construye el arco B2B propio del skill). Sigue el "Flujo de alto nivel" de abajo con

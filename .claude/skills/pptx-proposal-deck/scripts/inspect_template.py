@@ -5,18 +5,17 @@ Uso:
     python scripts/inspect_template.py <template.pptx> [outDir]
 
 En estos templates el DISEÑO vive en los slide LAYOUTS (fondos full-bleed como
-imágenes, logos, formas y títulos); los slides sólo referencian un layout y
-rellenan texto. Por eso volcamos LAYOUTS y SLIDES.
+imágenes, formas de color, y texto); los slides sólo referencian un layout. Por
+eso volcamos LAYOUTS y SLIDES, con TODO lo necesario para reproducir el diseño:
+geometría, FONDOS, imágenes, y por forma su relleno/borde/tipo + texto enriquecido.
 
 Produce (por defecto en outDir = ".", normalmente la raíz del skill):
-    template_spec.json          geometría exacta (pulgadas) por layout y slide,
-                                fuentes/colores de tema, y la ruta del fondo/imagenes
-    assets/backgrounds/*.jpg    el fondo REAL full-bleed de cada layout
+    template_spec.json          descripción COMPLETA (pulgadas) por layout y slide
+    assets/backgrounds/*        el fondo REAL full-bleed de cada layout (byte-idéntico)
     assets/media/*              logos y decoraciones (deduplicadas por contenido)
 
-Con eso el agente reconstruye cada slide en `scripts/replica_deck.js` con
-coordenadas medidas (no a ojo) y re-incrusta las imágenes reales del template.
-Guía: references/template-replication.md.
+`scripts/replica_deck.js` lee este spec y reproduce cada forma tal cual
+(`renderFromSpec`). Guía: references/template-replication.md.
 
 Requiere:  pip install python-pptx   (ver scripts/setup.sh)
 """
@@ -38,6 +37,39 @@ EMU = 914400.0
 
 def inches(v):
     return round(v / EMU, 3) if v is not None else None
+
+
+def enum_name(v):
+    return str(v).split(".")[-1] if v is not None else None
+
+
+def as_pt(v):
+    """Length → pt; número (multiplicador de interlínea) → float; None → None."""
+    if v is None:
+        return None
+    if hasattr(v, "pt"):
+        try:
+            return round(float(v.pt), 2)
+        except Exception:
+            return None
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
+def color_of(colorformat):
+    """RGB explícito, color de tema, o None (heredado)."""
+    try:
+        if colorformat is None or colorformat.type is None:
+            return None
+        if getattr(colorformat, "rgb", None) is not None:
+            return str(colorformat.rgb)
+        if getattr(colorformat, "theme_color", None) is not None:
+            return "theme:" + enum_name(colorformat.theme_color)
+    except Exception:
+        return None
+    return None
 
 
 class ImageSaver:
@@ -62,41 +94,167 @@ class ImageSaver:
         return rel
 
 
-def first_run_font(shape):
+def rich_text(shape):
+    """Texto completo: párrafos (alineación/spacing) y runs (fuente/color)."""
     if not getattr(shape, "has_text_frame", False):
         return None
-    for p in shape.text_frame.paragraphs:
-        align = str(p.alignment).split(".")[-1] if p.alignment is not None else None
+    tf = shape.text_frame
+    paras = []
+    for p in tf.paragraphs:
+        runs = []
         for r in p.runs:
             f = r.font
-            color = None
-            try:
-                if f.color is not None and f.color.type is not None:
-                    if getattr(f.color, "rgb", None) is not None:
-                        color = str(f.color.rgb)
-                    elif getattr(f.color, "theme_color", None) is not None:
-                        color = "theme:" + str(f.color.theme_color).split(".")[-1]
-            except Exception:
-                color = None
-            return {
-                "face": f.name,
-                "sizePt": float(f.size.pt) if f.size is not None else None,
-                "bold": f.bold,
-                "italic": f.italic,
-                "color": color,
-                "align": align,
+            runs.append(
+                {
+                    "text": r.text,
+                    "face": f.name,
+                    "sizePt": float(f.size.pt) if f.size is not None else None,
+                    "bold": f.bold,
+                    "italic": f.italic,
+                    "color": color_of(getattr(f, "color", None)),
+                }
+            )
+        paras.append(
+            {
+                "align": enum_name(p.alignment),
+                "level": p.level,
+                "lineSpacing": as_pt(p.line_spacing),
+                "spaceBefore": as_pt(p.space_before),
+                "spaceAfter": as_pt(p.space_after),
+                "runs": runs,
             }
-        if align:
-            return {"face": None, "sizePt": None, "bold": None, "italic": None, "color": None, "align": align}
+        )
+    return {
+        "paragraphs": paras,
+        "valign": enum_name(getattr(tf, "vertical_anchor", None)),
+        "wordWrap": getattr(tf, "word_wrap", None),
+    }
+
+
+def fill_transparency(shape):
+    """% de transparencia del relleno solido (0=opaco, 100=invisible), o None.
+    Critico: un rectangulo overlay full-bleed suele ir semi-transparente sobre la
+    foto; sin esta alfa se reproduce opaco y tapa el fondo."""
+    try:
+        spPr = shape._element.find(qn("p:spPr"))
+        if spPr is None:
+            return None
+        sf = spPr.find(qn("a:solidFill"))
+        if sf is None:
+            return None
+        clr = sf.find(qn("a:srgbClr"))
+        if clr is None:
+            clr = sf.find(qn("a:schemeClr"))
+        if clr is None:
+            return None
+        a = clr.find(qn("a:alpha"))
+        if a is None:
+            return None
+        opaque = int(a.get("val")) / 1000.0  # val en milesimas de %
+        return round(100.0 - opaque, 1)
+    except Exception:
+        return None
+
+
+def shape_fill(shape):
+    try:
+        f = shape.fill
+        t = f.type
+    except Exception:
+        return None
+    if t is None:
+        return None
+    tn = enum_name(t) or ""
+    if "SOLID" in tn:
+        try:
+            return {"type": "solid", "color": color_of(f.fore_color), "transparency": fill_transparency(shape)}
+        except Exception:
+            return {"type": "solid", "color": None, "transparency": fill_transparency(shape)}
+    if "GRAD" in tn:
+        stops = []
+        try:
+            for gs in f.gradient_stops:
+                stops.append(color_of(getattr(gs, "color", None)))
+        except Exception:
+            pass
+        return {"type": "gradient", "stops": stops}
+    if "BACKGROUND" in tn:
+        return {"type": "none"}
+    return {"type": tn.lower()}
+
+
+def shape_line(shape):
+    try:
+        ln = shape.line
+    except Exception:
+        return None
+    color = None
+    try:
+        color = color_of(ln.color)
+    except Exception:
+        color = None
+    width = None
+    try:
+        width = round(float(ln.width.pt), 2) if ln.width is not None else None
+    except Exception:
+        width = None
+    if color is None and width is None:
+        return None
+    return {"color": color, "widthPt": width}
+
+
+def shape_preset(shape):
+    try:
+        if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
+            return enum_name(shape.auto_shape_type)
+    except Exception:
+        return None
     return None
 
 
-def shape_record(shape, saver, tag, sw, sh_h):
-    kind = str(getattr(shape, "shape_type", None))
+def apply_tf(tf, left, top, w, h):
+    """Mapea geometria (EMU) de un espacio de coordenadas al absoluto. tf=None → identidad."""
+    if left is None or top is None or w is None or h is None or tf is None:
+        return left, top, w, h
+    gL, gT, sx, sy, chx, chy = tf
+    return (gL + (left - chx) * sx, gT + (top - chy) * sy, w * sx, h * sy)
+
+
+def child_tf_of(grp, g_abs):
+    """Transform para los HIJOS de un grupo, dadas sus coords absolutas g_abs (EMU)."""
+    try:
+        xfrm = grp._element.find(qn("p:grpSpPr") + "/" + qn("a:xfrm"))
+        chOff = xfrm.find(qn("a:chOff"))
+        chExt = xfrm.find(qn("a:chExt"))
+        if chExt is None or None in g_abs:
+            return None
+        chx, chy = int(chOff.get("x")), int(chOff.get("y"))
+        cex, cey = int(chExt.get("cx")), int(chExt.get("cy"))
+        gL, gT, gW, gH = g_abs
+        sx = gW / cex if cex else 1.0
+        sy = gH / cey if cey else 1.0
+        return (gL, gT, sx, sy, chx, chy)
+    except Exception:
+        return None
+
+
+def walk(shape, tf, out):
+    """Aplana grupos: recorre y devuelve (shape, geomAbsEMU) para cada forma-hoja."""
+    absg = apply_tf(tf, shape.left, shape.top, shape.width, shape.height)
+    if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+        ctf = child_tf_of(shape, absg)
+        for c in shape.shapes:
+            walk(c, ctf, out)
+    else:
+        out.append((shape, absg))
+
+
+def shape_record(shape, saver, tag, sw, sh_h, geom):
+    kind = enum_name(getattr(shape, "shape_type", None))
     ph = None
     try:
         if shape.is_placeholder:
-            ph = str(shape.placeholder_format.type).split(".")[-1]
+            ph = enum_name(shape.placeholder_format.type)
     except Exception:
         ph = None
     text = ""
@@ -104,26 +262,37 @@ def shape_record(shape, saver, tag, sw, sh_h):
         text = shape.text if shape.has_text_frame else ""
     except Exception:
         text = ""
+    rot = None
+    try:
+        rot = round(float(shape.rotation), 2) if shape.rotation else None
+    except Exception:
+        rot = None
+    L, T, W, H = geom
+    xIn, yIn, wIn, hIn = inches(L), inches(T), inches(W), inches(H)
     rec = {
         "name": getattr(shape, "name", None),
         "kind": kind,
         "placeholder": ph,
-        "xIn": inches(shape.left),
-        "yIn": inches(shape.top),
-        "wIn": inches(shape.width),
-        "hIn": inches(shape.height),
+        "preset": shape_preset(shape),
+        "rotation": rot,
+        "xIn": xIn,
+        "yIn": yIn,
+        "wIn": wIn,
+        "hIn": hIn,
+        "fill": shape_fill(shape),
+        "line": shape_line(shape),
         "text": text,
-        "font": first_run_font(shape),
+        "richText": rich_text(shape),
     }
-    # Imagen (pictures y placeholders de imagen) + detección de fondo full-bleed.
     if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
         try:
             img = shape.image
-            w, h = inches(shape.width) or 0, inches(shape.height) or 0
-            x, y = inches(shape.left) or 0, inches(shape.top) or 0
+            w, h, x, y = wIn or 0, hIn or 0, xIn or 0, yIn or 0
             fullbleed = w >= sw * 0.9 and h >= sh_h * 0.9 and x <= 0.2 and y <= 0.2
             sub = "backgrounds" if fullbleed else "media"
-            rec["image"] = saver.save(img.blob, img.ext, sub, "%s_pic" % tag if fullbleed else "%s_%s" % (tag, shape.shape_id))
+            rec["image"] = saver.save(
+                img.blob, img.ext, sub, "%s_pic" % tag if fullbleed else "%s_%s" % (tag, shape.shape_id)
+            )
             rec["fullbleed"] = fullbleed
         except Exception as e:
             rec["image"] = None
@@ -132,11 +301,17 @@ def shape_record(shape, saver, tag, sw, sh_h):
 
 
 def dump_container(container, saver, tag, sw, sh_h):
-    shapes = []
-    background = None
+    leaves = []
     for shp in container.shapes:
         try:
-            r = shape_record(shp, saver, tag, sw, sh_h)
+            walk(shp, None, leaves)
+        except Exception:
+            leaves.append((shp, (shp.left, shp.top, shp.width, shp.height)))
+    shapes = []
+    background = None
+    for shp, absg in leaves:
+        try:
+            r = shape_record(shp, saver, tag, sw, sh_h, absg)
         except Exception as e:
             r = {"error": str(e), "name": getattr(shp, "name", None)}
         if r.get("fullbleed") and r.get("image") and background is None:
@@ -212,10 +387,28 @@ def main():
     with open(os.path.join(out, "template_spec.json"), "w") as fh:
         json.dump(spec, fh, ensure_ascii=False, indent=2)
 
+    # Preview deck para el ANÁLISIS VISUAL: un slide por layout (add_slide hereda
+    # el diseño del layout), para renderizar a thumbnails y verlos con `view`.
+    # El diseño de estos templates vive en los layouts, así que renderizar el
+    # .pptx original no basta. (Ver references/template-replication.md.)
+    n_preview = 0
+    try:
+        prev = Presentation(template)
+        for layout in list(prev.slide_layouts):
+            prev.slides.add_slide(layout)
+            n_preview += 1
+        prev.save(os.path.join(out, "template_layouts_preview.pptx"))
+    except Exception as e:
+        sys.stderr.write("preview deck omitido: %s\n" % e)
+        n_preview = 0
+
     nbg = len(os.listdir(os.path.join(out, "assets", "backgrounds")))
     nmedia = len(os.listdir(os.path.join(out, "assets", "media")))
-    print("template_spec.json · %d layouts · %d slides" % (len(spec["layouts"]), len(spec["slides"])))
+    nshapes = sum(len(L["shapes"]) for L in spec["layouts"]) + sum(len(s["shapes"]) for s in spec["slides"])
+    print("template_spec.json · %d layouts · %d slides · %d shapes" % (len(spec["layouts"]), len(spec["slides"]), nshapes))
     print("fondos:", nbg, "· media:", nmedia, "· fuentes:", spec["theme"].get("majorFont"), "/", spec["theme"].get("minorFont"))
+    if n_preview:
+        print("template_layouts_preview.pptx · %d layouts para render/QA visual (ver template-replication.md)" % n_preview)
 
 
 if __name__ == "__main__":
