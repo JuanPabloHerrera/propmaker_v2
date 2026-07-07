@@ -1,7 +1,7 @@
 import PptxGenJS from 'pptxgenjs'
 import { pickBrandTokens } from '@/lib/brand'
 import { tiptapToSections, inlineText, type ProposalSection } from '@/lib/tiptap'
-import { PPTX_ICONS } from '@/lib/pptx-icons'
+import { PPTX_ICONS, PPTX_BG_NAVY } from '@/lib/pptx-icons'
 import type { Meeting, PptxTheme, TiptapDocument, TiptapNode, UserProfile } from '@/types'
 
 // ---------------------------------------------------------------------------
@@ -15,10 +15,10 @@ import type { Meeting, PptxTheme, TiptapDocument, TiptapNode, UserProfile } from
 // so nothing needs generating at runtime on serverless.
 // ---------------------------------------------------------------------------
 
-const FONT = 'Calibri' // safe face that ships with Office (renders on viewers' machines)
+const SERIF = 'Georgia' // elegant serif present on Windows + macOS (titles + body)
+const SANS = 'Arial' // universal sans for eyebrows/labels
 const SAGE = '4D8A6B'
 const INK = '1A2333'
-const DEEP = '0C1220' // dark floor for the sandwich background
 
 // LAYOUT_WIDE = 13.33in x 7.5in (16:9)
 const SLIDE_W = 13.333
@@ -59,7 +59,7 @@ function readableOn(fill: string): string {
 }
 
 interface Theme {
-  primary: string // dark sandwich background (cover/closing)
+  primary: string // deep navy (solid fallback; dark slides use the gradient image)
   accent: string // vivid brand accent
   accentLt: string // light accent (eyebrows/outlines/numbers on dark)
   ink: string // body text on light
@@ -70,8 +70,9 @@ interface Theme {
   light: string // content-slide background
   card: string
   onDark: string // body text on the dark background
-  majorFont: string
-  minorFont: string
+  majorFont: string // titles (serif)
+  minorFont: string // body (serif)
+  eyebrowFont: string // eyebrows/labels (sans caps)
   zebra: [string, string]
 }
 
@@ -84,37 +85,31 @@ export interface BuildProposalPptxInput {
   template?: PptxTheme | null
 }
 
-/** Build the branded theme from a template's extracted colors or the user's brand. */
+/**
+ * Build the branded theme. The dark cover/closing use a fixed premium navy
+ * gradient (PPTX_BG_NAVY) for a consistent, template-like look; the brand only
+ * drives the ACCENT (eyebrow, icon circles, rule, table header) — so a gray-ink
+ * brand no longer produces a gray deck. A `.pptx` template's fonts still win.
+ */
 function resolveTheme(template: PptxTheme | null | undefined, profile: UserProfile | null): Theme {
-  let accent: string, inkBase: string, primaryBase: string
-  if (template) {
-    accent = hex(template.accent, SAGE)
-    inkBase = hex(template.ink, INK)
-    primaryBase = template.background?.type === 'color' ? hex(template.background.color, inkBase) : inkBase
-  } else {
-    const t = pickBrandTokens(profile?.brand_colors)
-    accent = hex(t.accent, SAGE)
-    inkBase = hex(t.ink, INK)
-    // Prefer the brand's dark (ink) for the sandwich; else darken the accent.
-    primaryBase = t.ink ? hex(t.ink, INK) : accent
-  }
-  // Ensure the sandwich background is genuinely dark, whatever the brand gives us.
-  const primary = lum(primaryBase) <= 0.22 ? primaryBase : mix(primaryBase, DEEP, 0.74)
-  const ink = lum(inkBase) <= 0.5 ? inkBase : INK
+  const accent = template
+    ? hex(template.accent, SAGE)
+    : hex(pickBrandTokens(profile?.brand_colors).accent, SAGE)
   return {
-    primary,
+    primary: '0C2247', // deep navy (solid fallback; dark slides use the gradient image)
     accent,
     accentLt: mix(accent, 'FFFFFF', 0.5),
-    ink,
+    ink: INK,
     gray: '5B6472',
     muted: '6B6259',
     faint: '9A938B',
     hairline: 'E4E0DA',
     light: 'F5F7FB',
     card: 'FFFFFF',
-    onDark: lighten(primary, 0.72),
-    majorFont: template?.majorFont || FONT,
-    minorFont: template?.minorFont || template?.majorFont || FONT,
+    onDark: 'C9D6EC',
+    majorFont: template?.majorFont || SERIF,
+    minorFont: template?.minorFont || template?.majorFont || SERIF,
+    eyebrowFont: template?.majorFont || SANS,
     zebra: ['FBFAF7', 'FFFFFF'],
   }
 }
@@ -240,7 +235,7 @@ function addCoverSlide(
 ) {
   const { meeting, profile, theme, logo, preparedOn, sections } = opts
   const slide = pptx.addSlide()
-  slide.background = { color: theme.primary }
+  slide.background = { data: PPTX_BG_NAVY }
 
   if (logo) {
     slide.addImage({ data: logo, x: MARGIN, y: 0.75, w: 2.0, h: 1.0, sizing: { type: 'contain', w: 2.0, h: 1.0 } })
@@ -248,7 +243,7 @@ function addCoverSlide(
 
   slide.addText('PROPOSAL', {
     x: MARGIN, y: 2.7, w: CONTENT_W, h: 0.4,
-    fontFace: theme.majorFont, fontSize: 13, bold: true, color: theme.accentLt, charSpacing: 3,
+    fontFace: theme.eyebrowFont, fontSize: 13, bold: true, color: theme.accentLt, charSpacing: 3,
   })
 
   const title = meeting?.client_company?.trim() || meeting?.title?.trim() || 'Proposal'
@@ -290,7 +285,7 @@ function addClosingSlide(
 ) {
   const { meeting, profile, theme, logo } = opts
   const slide = pptx.addSlide()
-  slide.background = { color: theme.primary }
+  slide.background = { data: PPTX_BG_NAVY }
   if (logo) {
     slide.addImage({ data: logo, x: (SLIDE_W - 2.4) / 2, y: 2.15, w: 2.4, h: 1.2, sizing: { type: 'contain', w: 2.4, h: 1.2 } })
   }
@@ -314,7 +309,7 @@ function addClosingSlide(
 function contentHeader(slide: PptxGenJS.Slide, title: string, theme: Theme, brand: Brand, cont: boolean) {
   slide.addText(brand.kicker, {
     x: MARGIN, y: 0.5, w: 9, h: 0.3,
-    fontFace: theme.majorFont, fontSize: 11.5, bold: true, color: theme.accent, charSpacing: 2,
+    fontFace: theme.eyebrowFont, fontSize: 11.5, bold: true, color: theme.accent, charSpacing: 2,
   })
   slide.addText(cont ? `${title} (cont.)` : title, {
     x: MARGIN, y: 0.82, w: CONTENT_W - 1.7, h: 0.72,
@@ -617,9 +612,20 @@ function cellText(cell: TiptapNode): string {
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024
 
+/** Sniff a raster image's MIME from its magic bytes. We do NOT trust the HTTP
+ * `content-type` — Supabase public URLs can serve a generic type, which would
+ * make a strict header check drop a perfectly valid PNG/JPG logo. */
+function sniffImageMime(u8: Uint8Array): string | undefined {
+  if (u8.length >= 4 && u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4e && u8[3] === 0x47) return 'image/png'
+  if (u8.length >= 3 && u8[0] === 0xff && u8[1] === 0xd8 && u8[2] === 0xff) return 'image/jpeg'
+  if (u8.length >= 3 && u8[0] === 0x47 && u8[1] === 0x49 && u8[2] === 0x46) return 'image/gif'
+  return undefined
+}
+
 /**
- * Fetch a public logo URL and return a data URI for pptxgenjs. Returns undefined
- * on any failure, non-raster type, or oversized image so the deck degrades to
+ * Fetch a public logo URL and return a data URI for pptxgenjs. The image type is
+ * determined by sniffing the bytes (not the response header). Returns undefined
+ * on any failure, non-raster bytes, or oversized image so the deck degrades to
  * text-only gracefully. pptxgenjs embeds raster formats (PNG/JPG/GIF) only.
  */
 async function fetchLogoDataUri(url: string | null): Promise<string | undefined> {
@@ -627,12 +633,11 @@ async function fetchLogoDataUri(url: string | null): Promise<string | undefined>
   try {
     const res = await fetch(url)
     if (!res.ok) return undefined
-    const ct = (res.headers.get('content-type') || '').toLowerCase()
-    if (!/image\/(png|jpe?g|gif)/.test(ct)) return undefined
     const bytes = await res.arrayBuffer()
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_LOGO_BYTES) return undefined
-    const b64 = Buffer.from(bytes).toString('base64')
-    return `data:${ct};base64,${b64}`
+    const mime = sniffImageMime(new Uint8Array(bytes))
+    if (!mime) return undefined
+    return `data:${mime};base64,${Buffer.from(bytes).toString('base64')}`
   } catch {
     return undefined
   }
