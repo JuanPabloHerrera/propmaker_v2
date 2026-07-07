@@ -115,6 +115,18 @@ El deck se ajusta a lo que traiga la narrativa:
 
 ---
 
+## Modo réplica de template (Modo A)
+
+Cuando **replicas un template exacto** (ver `references/template-replication.md`), la narrativa
+NO se mapea al arco propio del skill sino a los **slides del template**:
+- **Conserva los títulos del template** (salvo que la propuesta pida cambiarlos); el template
+  define la estructura y el orden de los slides.
+- Rellena la **zona de contenido medida** de cada slide (la caja de texto grande / placeholder
+  BODY del `template_spec.json`) con lo que corresponda de la narrativa: `overview`/`clientGoals`
+  donde el template hable de contexto/valor, `priorities`/`scope` donde liste soluciones, etc.
+- Mismas reglas: **sin precios** por defecto, **no inventes** (lo que falte se omite o va
+  «Por confirmar»), vocabulario del proveedor.
+
 ## Después de llenar `CONTENT`
 
 Sigue el flujo de `SKILL.md`: `node scripts/build_deck.js` (o `DRY_RUN=1 node …` para ver el

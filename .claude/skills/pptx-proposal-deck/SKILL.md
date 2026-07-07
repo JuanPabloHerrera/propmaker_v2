@@ -1,6 +1,6 @@
 ---
 name: pptx-proposal-deck
-description: Construye la versión PowerPoint (.pptx) de una propuesta de PropMaker. Toma la NARRATIVA que PropMaker ya generó (el ProposalBrief revisado y/o el documento de propuesta) y un template de marca del que se extrae la identidad visual (logo, paleta, fuente), y produce un deck con arco de propuesta B2B (portada, contexto y retos, necesidades citadas del cliente, quiénes somos, metodología, casos de uso, demo, seguridad e infraestructura, alcance, próximos pasos, cierre), motivo de iconos en círculos, tarjetas y estructura sándwich claro/oscuro. El deck se ADAPTA al contenido: el nº de slides no es fijo (un slide de detalle por cada prioridad/caso de uso, y las secciones opcionales se omiten si la narrativa no las sustenta) — típicamente ~14. Funciona para CUALQUIER proveedor y cualquier template 16:9. Úsalo SIEMPRE que se pida la versión "pptx / deck / presentación / pitch" de una propuesta y haya (a) la narrativa de la propuesta o el resumen de la reunión, y (b) un template de marca. El documento de propuesta de PropMaker NO se toca: este skill solo define cómo se hace el .pptx. Por defecto NO incluye números ni precios (el esquema comercial se cierra en fase técnica). Salida: un .pptx en el idioma de la propuesta, con la marca del template, verificado con QA visual y grep de tokens huérfanos.
+description: Construye la versión PowerPoint (.pptx) de una propuesta de PropMaker. Toma la NARRATIVA que PropMaker ya generó (el ProposalBrief revisado y/o el documento de propuesta) y un template de marca del que se extrae la identidad visual (logo, paleta, fuente), y produce un deck con arco de propuesta B2B (portada, contexto y retos, necesidades citadas del cliente, quiénes somos, metodología, casos de uso, demo, seguridad e infraestructura, alcance, próximos pasos, cierre), motivo de iconos en círculos, tarjetas y estructura sándwich claro/oscuro. El deck se ADAPTA al contenido: el nº de slides no es fijo (un slide de detalle por cada prioridad/caso de uso, y las secciones opcionales se omiten si la narrativa no las sustenta) — típicamente ~14. Funciona para CUALQUIER proveedor y cualquier template 16:9. Úsalo SIEMPRE que se pida la versión "pptx / deck / presentación / pitch" de una propuesta y haya (a) la narrativa de la propuesta o el resumen de la reunión, y (b) un template de marca. El documento de propuesta de PropMaker NO se toca: este skill solo define cómo se hace el .pptx. Tiene DOS modos: (A) **REPLICAR el template exacto** — mismo fondo, estilo y títulos, reconstruido en pptxgenjs con medidas reales (`inspect_template.py` + `template-replication.md`), re-incrustando las imágenes reales del template; o (B) **diseño propio branded** (`build_deck.js`). Por defecto NO incluye números ni precios (el esquema comercial se cierra en fase técnica). Salida: un .pptx en el idioma de la propuesta, con la marca del template, verificado con QA visual y grep de tokens huérfanos.
 ---
 
 # Deck de propuesta branded (PPTX) desde la narrativa de PropMaker
@@ -17,6 +17,21 @@ Actívalo cuando el usuario:
 - Pide adaptar o regenerar un deck previo hecho con este flujo.
 
 No usar para: minutas, documentos Word (usa `docx`), o cuando no hay template de marca (ahí conviene un diseño desde cero con el skill `pptx` + `frontend-design`).
+
+## Dos modos — elige antes de empezar
+
+- **Modo A · REPLICAR el template exacto** (cuando el usuario quiere que la salida **respete
+  el template real**: mismo fondo, estilo, títulos, layout). Se **mide** el template con
+  `scripts/inspect_template.py` (geometría en pulgadas + fondos + assets reales), se
+  **reconstruye** cada slide en `scripts/replica_deck.js` re-incrustando las imágenes reales,
+  y se rellenan las zonas de contenido con la narrativa. **Guía: `references/template-replication.md`.**
+  Úsalo cuando el template sea un deck diseñado (fondos full-bleed, layouts propios).
+- **Modo B · Diseño propio branded** (cuando NO hay que calcar un template: se extrae la marca
+  y se construye el arco B2B propio del skill). Sigue el "Flujo de alto nivel" de abajo con
+  `build_deck.js`. Adapta el nº de slides al contenido.
+
+El resto de este documento describe el **Modo B**. Para el **Modo A** ve directo a
+`references/template-replication.md` (usa `setup.sh` igual, que instala también `python-pptx`).
 
 ## Qué produce
 
@@ -107,12 +122,15 @@ pptx-proposal-deck/
 ├── references/
 │   ├── brand-extraction.md          cómo sacar paleta/fuente/logo de cualquier template → BRAND
 │   ├── design-system.md             reglas de diseño por rol (agnósticas de marca)
-│   ├── slide-catalog.md             los ~14 slides y el patrón de cada uno
+│   ├── slide-catalog.md             los ~14 slides y el patrón de cada uno (modo B)
 │   ├── propmaker-narrative-map.md   mapa: ProposalBrief / documento de PropMaker → los slides
+│   ├── template-replication.md      MODO A: medir y reconstruir el template exacto
 │   └── build-guide.md               helpers, layouts, trampas de QA, iconos, comandos
 ├── scripts/
-│   ├── build_deck.js                implementación de referencia (edita BRAND + CONTENT)
-│   ├── example_deck_gentera.js      EJEMPLO completo y resuelto (solo referencia, no copiar)
+│   ├── build_deck.js                (modo B) implementación de referencia (edita BRAND + CONTENT)
+│   ├── example_deck_gentera.js      (modo B) EJEMPLO completo y resuelto (referencia, no copiar)
+│   ├── inspect_template.py          (modo A) mide el template → template_spec.json + assets/
+│   ├── replica_deck.js              (modo A) andamio de reconstrucción (edita ASSETS + CONTENT)
 │   ├── setup.sh                     instala dependencias (npm + pip)
 │   ├── extract_brand.sh             inspecciona colores/fuentes/imágenes de un template
 │   ├── gen_background.py            fondo degradado en el color primario de la marca
@@ -122,7 +140,7 @@ pptx-proposal-deck/
 
 ## Dependencias
 
-`bash scripts/setup.sh` instala lo necesario: npm (`pptxgenjs sharp react react-dom react-icons`) + pip (`Pillow`). Para QA se usan LibreOffice (`soffice`) + Poppler (`pdftoppm`) y el skill público `pptx` en `/mnt/skills/public/pptx` (`rezip.py`, `unpack.py`, `office/soffice.py`) — presentes en el contenedor de Claude Code cloud.
+`bash scripts/setup.sh` instala lo necesario: npm (`pptxgenjs sharp react react-dom react-icons`) + pip (`Pillow`, `python-pptx`). Para QA se usan LibreOffice (`soffice`) + Poppler (`pdftoppm`) y el skill público `pptx` en `/mnt/skills/public/pptx` (`rezip.py`, `unpack.py`, `office/soffice.py`, `thumbnail.py`) — presentes en el contenedor de Claude Code cloud. Para replicar un template con su fuente (p.ej. Open Sans) fielmente en el QA, instálala en el entorno.
 
 ## Ejemplo de disparo
 
