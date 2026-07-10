@@ -28,6 +28,9 @@ export interface MeetingInputs {
   referenceProposals: ReferenceSummaryInput[]
   chatHistory: ChatTurn[]
   liveChatHistory: ChatTurn[]
+  // In-meeting AI-suggested questions (the "Consider asking…" prompts), deduped
+  // across every suggestions pass generated during the call.
+  aiSuggestions: string[]
   // Pre-meeting metadata — previously dropped from generation; the brief uses it.
   contextSummary: string | null
   attendees: MeetingAttendee[]
@@ -133,6 +136,27 @@ export async function gatherMeetingInputs(
     .order('created_at', { ascending: true })
   const liveChatHistory = (liveChat ?? []) as ChatTurn[]
 
+  // In-meeting AI suggestions — every "Consider asking…" question generated as
+  // the transcript grew. Flatten across passes and dedupe (later passes repeat
+  // earlier questions), preserving first-seen order.
+  const { data: suggestionRows } = await supabase
+    .from('suggestions')
+    .select('questions')
+    .eq('meeting_id', meetingId)
+    .order('created_at', { ascending: true })
+  const seenSuggestions = new Set<string>()
+  const aiSuggestions: string[] = []
+  for (const row of (suggestionRows ?? []) as { questions: unknown }[]) {
+    const questions = Array.isArray(row.questions) ? (row.questions as unknown[]) : []
+    for (const q of questions) {
+      const text = typeof q === 'string' ? q.trim() : ''
+      if (text && !seenSuggestions.has(text)) {
+        seenSuggestions.add(text)
+        aiSuggestions.push(text)
+      }
+    }
+  }
+
   return {
     meetingType: m.meeting_type as MeetingType,
     browserTranscript,
@@ -142,6 +166,7 @@ export async function gatherMeetingInputs(
     referenceProposals,
     chatHistory,
     liveChatHistory,
+    aiSuggestions,
     contextSummary: m.context_summary ?? null,
     attendees: (m.attendees as MeetingAttendee[] | null) ?? [],
     clientCompany: m.client_company ?? null,

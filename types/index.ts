@@ -90,6 +90,7 @@ export interface Meeting {
   detected_product_ids: string[]
   deal_status: DealStatus
   live_partial: string | null
+  recall_transcript_ready: boolean
   proposal_brief: ProposalBrief | null
   created_at: string
   updated_at: string

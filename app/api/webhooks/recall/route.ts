@@ -118,8 +118,8 @@ export async function POST(request: Request) {
     if (transcriptId) {
       const segments = await getTranscriptById(transcriptId)
       if (segments.length > 0) {
-        await supabase.from('transcript_segments').delete().eq('meeting_id', meetingId)
-        // Delete only recall-sourced segments so we don't wipe browser-captured ones
+        // Delete only recall-sourced segments so we don't wipe browser-captured
+        // ones (the `both` capture mode keeps both streams).
         await supabase
           .from('transcript_segments')
           .delete()
@@ -144,7 +144,13 @@ export async function POST(request: Request) {
       }
     }
 
-    await supabase.from('meetings').update({ status: 'completed', live_partial: null }).eq('id', meetingId)
+    // Mark the recall transcript as ready so the Processing screen can advance.
+    // Only flip this here (transcript.done) — never in the bot.done branch, which
+    // can fire before the transcript is actually delivered.
+    await supabase
+      .from('meetings')
+      .update({ status: 'completed', live_partial: null, recall_transcript_ready: true })
+      .eq('id', meetingId)
   }
 
   // --- Bot status events ---

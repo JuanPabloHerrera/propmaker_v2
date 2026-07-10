@@ -24,6 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     referenceProposals,
     chatHistory,
     liveChatHistory,
+    aiSuggestions,
   } = inputs
 
   const { userMessage, generate } = await request.json()
@@ -87,6 +88,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     products,
     chatHistory,
     liveChatHistory,
+    aiSuggestions,
     referenceProposals,
   })
 

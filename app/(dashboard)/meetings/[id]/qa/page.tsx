@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { QAToolbar } from '@/components/qa/QAToolbar'
@@ -21,7 +21,20 @@ const EXPECTED_QUESTIONS = 5
 export default function QAPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
+
+  // Processing proceeded before the Recall transcript finalized — warn once so
+  // the consultant knows the proposal may be missing full-meeting context.
+  const warnedIncompleteRef = React.useRef(false)
+  React.useEffect(() => {
+    if (searchParams.get('incomplete') === '1' && !warnedIncompleteRef.current) {
+      warnedIncompleteRef.current = true
+      toast.warning(
+        'The meeting transcript did not finalize in time — the proposal may be missing full context. You can re-sync it from the meeting later.',
+      )
+    }
+  }, [searchParams])
 
   const [meeting, setMeeting] = React.useState<Meeting | null>(null)
   const [messages, setMessages] = React.useState<Message[]>([])

@@ -65,6 +65,19 @@ function renderCatalog(products: Product[]): string {
   return lines.join('\n') + overflow
 }
 
+/**
+ * Render the in-meeting AI-suggested questions as a labeled prompt block, or
+ * null when there were none. These are AI-generated "Consider asking…" prompts
+ * surfaced during the call — useful context for what mattered, but NOT things
+ * the client confirmed, so they rank below the human sources.
+ */
+function renderAiSuggestions(aiSuggestions?: string[]): string | null {
+  if (!aiSuggestions || aiSuggestions.length === 0) return null
+  return `## IN-MEETING AI SUGGESTIONS (context — AI-generated prompts, not client-confirmed)\n${aiSuggestions
+    .map((q) => `- ${q}`)
+    .join('\n')}`
+}
+
 // ── Reference proposals ─────────────────────────────────────────────
 // Past proposals the user uploaded / reused, summarized once at save time and
 // fed to the proposal agent as cached context for "similar past projects".
@@ -278,6 +291,7 @@ interface MeetingBriefInput {
   products: Product[]
   chatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
   liveChatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  aiSuggestions?: string[]
   referenceProposals?: ReferenceSummaryInput[]
   meetingType: MeetingType
   contextSummary: string | null
@@ -293,6 +307,7 @@ export async function generateMeetingBrief({
   products,
   chatHistory,
   liveChatHistory,
+  aiSuggestions,
   referenceProposals,
   meetingType,
   contextSummary,
@@ -333,6 +348,7 @@ ${BRIEF_RULES}`
     `## PRIMARY TRANSCRIPT (browser audio)\n${browserTranscript || '(none)'}`,
     recallTranscript ? `## FALLBACK TRANSCRIPT (Recall.ai)\n${recallTranscript}` : null,
     liveContext ? `## IN-MEETING CO-PILOT CONVERSATION\n${liveContext}` : null,
+    renderAiSuggestions(aiSuggestions),
     `## POST-MEETING Q&A\n${qaContext || '(none)'}`,
   ]
     .filter(Boolean)
@@ -391,6 +407,7 @@ interface GenerateProposalInput {
   products: Product[]
   chatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
   liveChatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  aiSuggestions?: string[]
   meetingType: MeetingType
   referenceProposals?: ReferenceSummaryInput[]
   brief?: ProposalBrief
@@ -403,6 +420,7 @@ export async function generateProposal({
   products,
   chatHistory,
   liveChatHistory,
+  aiSuggestions,
   meetingType,
   referenceProposals,
   brief,
@@ -429,6 +447,7 @@ Source priority (highest to lowest authority):
 4. Browser transcript (primary audio) — higher fidelity; trust this over the fallback when they disagree.
 5. Recall.ai transcript (fallback audio) — use only to fill gaps in the primary transcript.
 6. In-meeting co-pilot conversation — the consultant's working hypotheses with the AI during the call, NOT decisions agreed with the client.
+7. In-meeting AI suggestions — AI-generated "consider asking" prompts; use only as hints about what mattered, never as client-confirmed facts.
 
 Writing style (STRICT — this is the point):
 - Direct and concrete. Every sentence must carry a specific fact from the sources — a name, number, date, deliverable, or decision. If a sentence would fit any proposal, delete it.
@@ -469,6 +488,7 @@ Return only the Markdown content — no preamble, no commentary.`
     `## PRIMARY TRANSCRIPT (browser audio)\n${browserTranscript || '(none)'}`,
     recallTranscript ? `## FALLBACK TRANSCRIPT (Recall.ai)\n${recallTranscript}` : null,
     liveContext ? `## IN-MEETING CO-PILOT CONVERSATION\n${liveContext}` : null,
+    renderAiSuggestions(aiSuggestions),
     `## POST-MEETING Q&A\n${qaContext || '(none)'}`,
   ]
     .filter(Boolean)
@@ -512,6 +532,7 @@ interface PostMeetingChatInput {
   products: Product[]
   chatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
   liveChatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  aiSuggestions?: string[]
   referenceProposals?: ReferenceSummaryInput[]
 }
 
@@ -522,6 +543,7 @@ export function streamPostMeetingChat({
   products,
   chatHistory,
   liveChatHistory,
+  aiSuggestions,
   referenceProposals,
 }: PostMeetingChatInput) {
   const messages: Anthropic.MessageParam[] = chatHistory.map((m) => ({
@@ -548,6 +570,7 @@ Source priority (highest to lowest authority):
 3. Browser transcript (primary audio) — higher fidelity.
 4. Recall.ai transcript (fallback audio) — use only to fill gaps.
 5. In-meeting co-pilot conversation — hypotheses, not decisions.
+6. In-meeting AI suggestions — AI-generated prompts; hints only, not client-confirmed.
 
 Your job: ask the consultant 3-5 targeted questions ONE AT A TIME to fill gaps. Prioritize questions that determine WHICH catalog products to recommend and at what quantity/configuration — budget range, hard deadlines, decision makers, must-have vs nice-to-have features, existing systems.
 
@@ -561,6 +584,7 @@ After enough questions are answered (or the consultant says they're done), reply
     `## PRIMARY TRANSCRIPT (browser audio)\n${browserTranscript || '(none)'}`,
     recallTranscript ? `## FALLBACK TRANSCRIPT (Recall.ai)\n${recallTranscript}` : null,
     liveContext ? `## IN-MEETING CO-PILOT CONVERSATION\n${liveContext}` : null,
+    renderAiSuggestions(aiSuggestions),
   ]
     .filter(Boolean)
     .join('\n\n')

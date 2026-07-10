@@ -56,6 +56,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       products: inputs.products,
       chatHistory: inputs.chatHistory,
       liveChatHistory: inputs.liveChatHistory,
+      aiSuggestions: inputs.aiSuggestions,
       meetingType: inputs.meetingType,
       referenceProposals: inputs.referenceProposals,
       brief,

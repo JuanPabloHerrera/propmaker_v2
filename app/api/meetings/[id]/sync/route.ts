@@ -49,6 +49,13 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   await serviceSupabase.from('transcript_segments').insert(rows)
 
+  // The pulled transcript is authoritative — mark it ready so the Processing
+  // screen (and anything else waiting on the recall transcript) can advance.
+  await serviceSupabase
+    .from('meetings')
+    .update({ recall_transcript_ready: true })
+    .eq('id', id)
+
   // Generate fresh suggestions from full transcript
   const fullText = rows.map((r) => `${r.speaker}: ${r.text}`).join('\n')
   const questions = await generateSuggestions(fullText, meeting.meeting_type as MeetingType)
