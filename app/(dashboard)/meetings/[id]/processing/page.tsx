@@ -33,14 +33,16 @@ export default function ProcessingPage() {
   // True once we're expecting a Recall transcript and it hasn't landed yet.
   const [waitingForRecall, setWaitingForRecall] = React.useState(false)
 
-  // Advance to /qa exactly once. `incomplete` marks that we proceeded without a
-  // confirmed transcript so the Q&A screen can warn the user.
+  // Advance to the documents hub exactly once. `incomplete` marks that we
+  // proceeded without a confirmed transcript so the hub can warn the user.
   const advancedRef = React.useRef(false)
   const advance = React.useCallback(
     (incomplete = false) => {
       if (advancedRef.current) return
       advancedRef.current = true
-      router.push(`/meetings/${id}/qa${incomplete ? '?incomplete=1' : ''}`)
+      // Fire-and-forget fallback for metadata extraction (idempotent server-side).
+      fetch(`/api/meetings/${id}/extract`, { method: 'POST' }).catch(() => {})
+      router.push(`/meetings/${id}/documents${incomplete ? '?incomplete=1' : ''}`)
     },
     [id, router],
   )

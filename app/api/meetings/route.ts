@@ -21,43 +21,34 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const {
-    title,
-    meeting_type,
-    meeting_url,
-    scheduled_at,
-    capture_mode = 'browser',
-    selected_categories = [],
-    attendees = [],
-    context_summary = null,
-    client_company = null,
-    attached_product_ids = [],
-  } = body
+  const { mode, meeting_url } = body as { mode?: string; meeting_url?: string | null }
 
-  if (!title || !meeting_type) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+  if (mode !== 'local' && mode !== 'online') {
+    return NextResponse.json({ error: 'mode must be "local" or "online"' }, { status: 400 })
+  }
+  if (mode === 'online' && !meeting_url) {
+    return NextResponse.json({ error: 'Meeting URL required for online meetings' }, { status: 400 })
   }
 
-  if ((capture_mode === 'recall' || capture_mode === 'both') && !meeting_url) {
-    return NextResponse.json({ error: 'Meeting URL required when using Recall.ai bot' }, { status: 400 })
-  }
+  // Placeholder title until post-meeting metadata extraction names the meeting
+  // from the transcript (online meetings may get a Recall title sooner).
+  const dateLabel = new Date().toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
 
   const { data, error } = await supabase
     .from('meetings')
     .insert({
       user_id: user.id,
-      title,
-      meeting_type,
-      meeting_url: meeting_url ?? null,
-      scheduled_at: scheduled_at ?? null,
+      title: `Meeting — ${dateLabel}`,
+      meeting_type: 'consulting',
+      meeting_url: mode === 'online' ? meeting_url : null,
       status: 'pending',
-      capture_mode,
-      selected_categories,
-      attendees,
-      context_summary,
-      client_company,
-      attached_product_ids,
-      deal_status: scheduled_at ? 'upcoming' : 'draft',
+      capture_mode: mode === 'online' ? 'recall' : 'browser',
+      attendees: [],
+      deal_status: 'draft',
     })
     .select()
     .single()

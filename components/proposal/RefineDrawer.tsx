@@ -7,7 +7,7 @@ import { Icon } from '@/components/ui/icon'
 interface Props {
   open: boolean
   onClose: () => void
-  meetingId: string
+  documentId: string
   onApplied: () => void
 }
 
@@ -23,7 +23,7 @@ const SEED_PROMPT: ChatMsg = {
     "Tell me what to change. I'll suggest revisions and you can hit \"Apply changes\" when ready. Examples:\n• Shorten the Executive Summary\n• Bump the timeline to 8 weeks\n• Drop the Discovery line item\n• Tone: more confident, less hedging",
 }
 
-export function RefineDrawer({ open, onClose, meetingId, onApplied }: Props) {
+export function RefineDrawer({ open, onClose, documentId, onApplied }: Props) {
   const [history, setHistory] = React.useState<ChatMsg[]>([SEED_PROMPT])
   const [input, setInput] = React.useState('')
   const [streaming, setStreaming] = React.useState(false)
@@ -68,7 +68,7 @@ export function RefineDrawer({ open, onClose, meetingId, onApplied }: Props) {
   }, [open, streaming, applying, onClose])
 
   async function runStream(mode: 'chat' | 'apply', baseHistory: ChatMsg[]) {
-    const res = await fetch(`/api/meetings/${meetingId}/proposal/refine`, {
+    const res = await fetch(`/api/documents/${documentId}/refine`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode, history: baseHistory }),

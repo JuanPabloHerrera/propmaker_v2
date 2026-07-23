@@ -13,18 +13,13 @@ import {
 import { Icon } from '@/components/ui/icon'
 import { DEAL_STATUS_LABELS, type DealStatus } from '@/types'
 
-const ALL_STATUSES: DealStatus[] = [
-  'draft',
-  'upcoming',
-  'proposal_sent',
-  'won',
-  'lost',
-]
+// 'upcoming' is legacy-only (scheduling was removed): still styled for old rows
+// but no longer selectable.
+const ALL_STATUSES: DealStatus[] = ['draft', 'proposal_sent', 'won', 'lost']
 
 interface Props {
   meetingId: string
   status: DealStatus
-  value: number | null
 }
 
 type StatusStyle = {
@@ -67,17 +62,7 @@ const STATUS_STYLES: Record<DealStatus, StatusStyle> = {
   },
 }
 
-function formatVal(v: number): string {
-  if (v >= 1000) return `${Math.round(v / 1000)}K`
-  return v.toString()
-}
-
-function statusLabel(status: DealStatus, value: number | null): string {
-  if (status === 'won' && value) return `Won · $${formatVal(value)}`
-  return DEAL_STATUS_LABELS[status]
-}
-
-export function MeetingStatusMenu({ meetingId, status, value }: Props) {
+export function MeetingStatusMenu({ meetingId, status }: Props) {
   const router = useRouter()
   const [optimistic, setOptimistic] = React.useState<DealStatus>(status)
   const [, startTransition] = React.useTransition()
@@ -107,7 +92,7 @@ export function MeetingStatusMenu({ meetingId, status, value }: Props) {
   }
 
   const style = STATUS_STYLES[optimistic]
-  const label = statusLabel(optimistic, value)
+  const label = DEAL_STATUS_LABELS[optimistic]
 
   return (
     <div

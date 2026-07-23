@@ -3,10 +3,8 @@ import {
   MeetingType,
   MEETING_TYPE_LABELS,
   PRICE_UNIT_LABELS,
+  type DocType,
   type Product,
-  type ProposalBrief,
-  type BriefActionItem,
-  type BriefPriorityLevel,
   type MeetingAttendee,
 } from '@/types'
 
@@ -118,6 +116,34 @@ export function summarizeReferencePdf(pdfBase64: string): Promise<string> {
   ])
 }
 
+/**
+ * Transcribe a reference PDF to plain text so its full content can be stored
+ * (reference_proposals.full_text) and injected when it's the matched reference.
+ * Best-effort: returns '' on failure so upload still succeeds with summary-only.
+ */
+export async function extractReferencePdfText(pdfBase64: string): Promise<string> {
+  try {
+    const msg = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 16384,
+      system:
+        'You transcribe business documents. Return the COMPLETE plain text of the attached PDF in reading order, preserving headings and tables as simple text lines. Skip page numbers, headers/footers, and decorative elements. Return only the transcription — no commentary, no code fences.',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+            { type: 'text', text: 'Transcribe this document to plain text.' },
+          ],
+        },
+      ],
+    })
+    return msg.content[0]?.type === 'text' ? msg.content[0].text.trim() : ''
+  } catch {
+    return ''
+  }
+}
+
 function renderReferenceProposals(refs: ReferenceSummaryInput[] | undefined): string {
   if (!refs || refs.length === 0) return ''
   const slice = refs.slice(0, MAX_REFERENCE_PROPOSALS)
@@ -160,244 +186,321 @@ function buildSystemBlocks(
   return blocks
 }
 
-// ── Pre-proposal brief ──────────────────────────────────────────────
-// After the Q&A, synthesize every input into ONE prioritized brief that the
-// consultant reviews/edits on the /brief screen before the proposal is written.
-// The reviewed brief then becomes the highest-authority input to generateProposal,
-// so the proposal is organized around clear, prioritized, actionable items.
-// Returns a normalized ProposalBrief and never throws — a parse failure falls
-// back to an empty shell so the review screen always renders.
-
-const PRIORITY_LEVELS: BriefPriorityLevel[] = ['high', 'medium', 'low']
-
-/** An empty, valid brief — the fallback when the model returns nothing usable. */
-export function emptyBrief(): ProposalBrief {
-  return {
-    overview: '',
-    clientGoals: [],
-    priorities: [],
-    scope: [],
-    outOfScope: [],
-    recommendedProducts: [],
-    budgetNotes: null,
-    timelineNotes: null,
-    openQuestions: [],
-    generatedAt: null,
-  }
-}
-
-function asStringArray(v: unknown, max = 12): string[] {
-  if (!Array.isArray(v)) return []
-  return v
-    .filter((s): s is string => typeof s === 'string')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, max)
-}
-
-/** Validate/normalize arbitrary model JSON into a ProposalBrief. */
-export function coerceBrief(raw: unknown): ProposalBrief {
-  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const priorities = Array.isArray(o.priorities)
-    ? o.priorities
-        .map((p): BriefActionItem | null => {
-          if (!p || typeof p !== 'object') return null
-          const item = p as Record<string, unknown>
-          const title = typeof item.title === 'string' ? item.title.trim() : ''
-          if (!title) return null
-          const priority = PRIORITY_LEVELS.includes(item.priority as BriefPriorityLevel)
-            ? (item.priority as BriefPriorityLevel)
-            : 'medium'
-          return {
-            title,
-            detail: typeof item.detail === 'string' ? item.detail.trim() : '',
-            priority,
-          }
-        })
-        .filter((x): x is BriefActionItem => x !== null)
-        .slice(0, 12)
-    : []
-  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
-  return {
-    overview: typeof o.overview === 'string' ? o.overview.trim() : '',
-    clientGoals: asStringArray(o.clientGoals),
-    priorities,
-    scope: asStringArray(o.scope),
-    outOfScope: asStringArray(o.outOfScope),
-    recommendedProducts: asStringArray(o.recommendedProducts, 30),
-    budgetNotes: str(o.budgetNotes),
-    timelineNotes: str(o.timelineNotes),
-    openQuestions: asStringArray(o.openQuestions),
-    generatedAt: null,
-  }
-}
-
-function parseBriefJson(text: string): ProposalBrief {
+/** Parse a JSON object out of a model reply, tolerating code fences and prose. */
+function parseJsonObject(text: string): Record<string, unknown> | null {
   const cleaned = text
     .trim()
     .replace(/^```(?:json)?/i, '')
     .replace(/```$/, '')
     .trim()
   try {
-    return coerceBrief(JSON.parse(cleaned))
+    const parsed = JSON.parse(cleaned)
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
   } catch {
-    // Last resort: pull the first {...} block out of any surrounding prose.
     const match = cleaned.match(/\{[\s\S]*\}/)
     if (match) {
       try {
-        return coerceBrief(JSON.parse(match[0]))
+        const parsed = JSON.parse(match[0])
+        return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
       } catch {
-        /* fall through to empty */
+        return null
       }
     }
-    return emptyBrief()
+    return null
   }
 }
 
-// The strategist rules — shared instruction body, cached across calls per meeting-type.
-const BRIEF_RULES = `Your job: distill the engagement into clear, PRIORITIZED, ACTIONABLE items so the proposal can be built around defined deliverables — not a wall of transcript.
+// ── Post-meeting metadata extraction ────────────────────────────────
+// The pre-meeting form is gone: the meeting's title, client company, attendees,
+// context summary, and dominant language are detected from the transcript once
+// the meeting ends. Never throws — on failure every field comes back null/empty
+// so callers can skip the update.
 
-Source priority (highest to lowest authority):
-1. Consultant's notes — authoritative.
-2. Post-meeting Q&A — authoritative; resolves ambiguity.
-3. Browser transcript (primary audio) — higher fidelity.
-4. Recall.ai transcript (fallback audio) — fills gaps only.
-5. In-meeting co-pilot conversation — the consultant's hypotheses, NOT client decisions.
-Pre-meeting context, attendees, and client metadata are background — use them, but never over the sources above.
+export interface ExtractedMeetingMetadata {
+  title: string | null
+  client_company: string | null
+  attendees: MeetingAttendee[]
+  context_summary: string | null
+  /** Dominant transcript language as a lowercase ISO 639-1 code (e.g. "es"). */
+  language: string | null
+}
 
-Rules:
-- "priorities" is the backbone: each item is a concrete, defined deliverable or workstream with a short title, a one-to-two sentence detail, and a priority of "high" | "medium" | "low". Order them high → low. Aim for 3–8 items.
-- "recommendedProducts" may ONLY contain names copied EXACTLY from the USER PRODUCT CATALOG. If the catalog is empty, return [].
-- Ground every field in the sources. Do NOT invent budget, timeline, scope, or offerings that were not discussed. Leave a field empty ([] or null) when the meeting did not cover it.
-- Be specific and concrete; skip filler and boilerplate.
-
-Return ONLY a JSON object (no markdown, no code fences, no prose) with exactly these keys:
-{
-  "overview": string,                // 2–4 sentences summarizing the engagement
-  "clientGoals": string[],           // what the client wants to achieve
-  "priorities": [{ "title": string, "detail": string, "priority": "high"|"medium"|"low" }],
-  "scope": string[],                 // in-scope work, concrete bullets
-  "outOfScope": string[],            // explicitly out of scope / deferred
-  "recommendedProducts": string[],   // exact catalog product names
-  "budgetNotes": string|null,        // budget signals, or null
-  "timelineNotes": string|null,      // timeline/deadline signals, or null
-  "openQuestions": string[]          // unresolved items still needing clarification
-}`
-
-interface MeetingBriefInput {
+interface ExtractMetadataInput {
   browserTranscript: string
   recallTranscript: string
   notesText: string
-  products: Product[]
-  chatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
-  liveChatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
-  aiSuggestions?: string[]
-  referenceProposals?: ReferenceSummaryInput[]
-  meetingType: MeetingType
-  contextSummary: string | null
-  attendees: MeetingAttendee[]
-  clientCompany: string | null
-  clientValue: number | null
 }
 
-export async function generateMeetingBrief({
+export async function extractMeetingMetadata({
   browserTranscript,
   recallTranscript,
   notesText,
-  products,
-  chatHistory,
-  liveChatHistory,
-  aiSuggestions,
-  referenceProposals,
-  meetingType,
-  contextSummary,
-  attendees,
-  clientCompany,
-  clientValue,
-}: MeetingBriefInput): Promise<ProposalBrief> {
-  const label = MEETING_TYPE_LABELS[meetingType]
+}: ExtractMetadataInput): Promise<ExtractedMeetingMetadata> {
+  const empty: ExtractedMeetingMetadata = {
+    title: null,
+    client_company: null,
+    attendees: [],
+    context_summary: null,
+    language: null,
+  }
+  const transcript = browserTranscript || recallTranscript
+  if (!transcript.trim()) return empty
 
-  const qaContext = chatHistory
-    .map((m) => `${m.role === 'assistant' ? 'Claude' : 'Consultant'}: ${m.content}`)
+  const userContent = [
+    `## PRIMARY TRANSCRIPT\n${transcript.slice(0, 30000)}`,
+    notesText ? `## CONSULTANT NOTES\n${notesText.slice(0, 4000)}` : null,
+  ]
+    .filter(Boolean)
     .join('\n\n')
 
+  try {
+    const msg = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system: `You label business-meeting transcripts. Extract metadata from the meeting below.
+
+Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
+{
+  "title": string,            // short client-facing meeting title in the transcript's language, e.g. "Descubrimiento — CRM Acme"
+  "client_company": string|null, // the CLIENT organization discussed, null if unclear
+  "attendees": [{ "name": string }], // people who spoke or were named as present (≤8)
+  "context_summary": string,  // 2–3 sentences: who met, what the client needs, key constraints
+  "language": string          // dominant spoken language as a lowercase ISO 639-1 code, e.g. "es"
+}
+
+Ground everything in the transcript; use null/[] when a field is genuinely unclear. Never invent names.`,
+      messages: [{ role: 'user', content: userContent }],
+    })
+    const text = msg.content[0]?.type === 'text' ? msg.content[0].text : ''
+    const o = parseJsonObject(text)
+    if (!o) return empty
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+    const attendees = Array.isArray(o.attendees)
+      ? o.attendees
+          .map((a): MeetingAttendee | null => {
+            if (!a || typeof a !== 'object') return null
+            const name = str((a as Record<string, unknown>).name)
+            return name ? { name } : null
+          })
+          .filter((a): a is MeetingAttendee => a !== null)
+          .slice(0, 8)
+      : []
+    const language = str(o.language)?.toLowerCase().slice(0, 5) ?? null
+    return {
+      title: str(o.title),
+      client_company: str(o.client_company),
+      attendees,
+      context_summary: str(o.context_summary),
+      language,
+    }
+  } catch {
+    return empty
+  }
+}
+
+// ── Reference matching ──────────────────────────────────────────────
+// Before a proposal is written, pick the single MOST SIMILAR past reference
+// proposal. Its full text (stored at upload) is then injected into the proposal
+// prompt so scope structure, timelines, and service packaging mirror a real,
+// comparable project — while unit prices stay governed by the live catalog.
+
+export interface ReferenceMatchCandidate {
+  id: string
+  title: string
+  summary: string
+}
+
+export async function matchReferenceProposal({
+  meetingDigest,
+  refs,
+}: {
+  meetingDigest: string
+  refs: ReferenceMatchCandidate[]
+}): Promise<{ refId: string | null; reason: string | null }> {
+  if (refs.length === 0) return { refId: null, reason: null }
+
+  const list = refs
+    .map((r, i) => `${i + 1}. id: ${r.id}\n   title: ${r.title}\n   ${r.summary.slice(0, 1600)}`)
+    .join('\n\n')
+
+  try {
+    const msg = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 512,
+      system: `You match a new client engagement against a library of the user's PAST proposals to find the single most similar past project (by industry, project type, scope, and deal shape).
+
+Return ONLY a JSON object: { "refId": string|null, "reason": string }
+- "refId" MUST be one of the candidate ids verbatim, or null if none is a reasonable match.
+- "reason": one sentence on why it is (or nothing is) the best match.`,
+      messages: [
+        {
+          role: 'user',
+          content: `## NEW ENGAGEMENT\n${meetingDigest.slice(0, 12000)}\n\n## PAST PROPOSAL CANDIDATES\n${list}`,
+        },
+      ],
+    })
+    const text = msg.content[0]?.type === 'text' ? msg.content[0].text : ''
+    const o = parseJsonObject(text)
+    const refId = typeof o?.refId === 'string' ? o.refId : null
+    const valid = refId && refs.some((r) => r.id === refId) ? refId : null
+    return { refId: valid, reason: typeof o?.reason === 'string' ? o.reason : null }
+  } catch {
+    return { refId: null, reason: null }
+  }
+}
+
+/**
+ * User-content line that sets the output language. Lives in the per-call user
+ * content, NOT in the cached system blocks — keep those byte-stable.
+ */
+function languageDirective(language: string | null): string {
+  const lang = language?.trim() || 'es'
+  return `## OUTPUT LANGUAGE\nWrite the ENTIRE document in the language with ISO 639-1 code "${lang}" (the meeting's dominant language).`
+}
+
+// ── Meeting minute & transcript summary ─────────────────────────────
+// Two of the three post-meeting document types. Both are generated in one pass
+// from the transcript (+ notes; the minute also folds in the live co-pilot
+// artifacts) and return Markdown for markdownToTiptap.
+
+interface MeetingMinuteInput {
+  browserTranscript: string
+  recallTranscript: string
+  notesText: string
+  liveChatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  aiSuggestions?: string[]
+  attendees: MeetingAttendee[]
+  clientCompany: string | null
+  language: string | null
+}
+
+const MINUTE_INSTRUCTIONS = `You write formal MEETING MINUTES from a business meeting's transcript and supporting artifacts.
+
+Source priority (highest to lowest authority):
+1. Consultant's notes — authoritative.
+2. Browser transcript (primary audio) — higher fidelity.
+3. Recall.ai transcript (fallback audio) — fills gaps only.
+4. In-meeting co-pilot conversation and AI suggestions — the consultant's working hypotheses, NOT client decisions.
+
+Writing style: direct and concrete; every line carries a specific fact from the sources — a name, decision, number, date, or commitment. No filler, no corporate register, no invented detail. If the sources don't cover a section, omit the section.
+
+Output structure — Markdown, use exactly these ## headers (translated into the output language), omitting any section the meeting didn't cover:
+## Attendees
+Bulleted names (and roles/companies when stated).
+## Topics Discussed
+Bulleted; one bullet per topic, with the substance of what was said.
+## Decisions
+Bulleted; only decisions actually agreed in the meeting.
+## Action Items
+Bulleted; each item as **owner** — task, with the deadline when one was stated.
+## Open Questions
+Bulleted; unresolved items that need follow-up.
+
+Return only the Markdown content — no preamble, no commentary, and no top-level title (the app supplies the document title).`
+
+export async function generateMeetingMinute({
+  browserTranscript,
+  recallTranscript,
+  notesText,
+  liveChatHistory,
+  aiSuggestions,
+  attendees,
+  clientCompany,
+  language,
+}: MeetingMinuteInput): Promise<string> {
   const liveContext = liveChatHistory
     .map((m) => `${m.role === 'assistant' ? 'Co-pilot' : 'Consultant'}: ${m.content}`)
     .join('\n\n')
 
-  const catalogBlock = renderCatalog(products)
-
   const attendeeLine = attendees.length
     ? attendees.map((a) => (a.email ? `${a.name} <${a.email}>` : a.name)).join(', ')
     : '(none recorded)'
-  const clientLine =
-    [
-      clientCompany ? `Company: ${clientCompany}` : null,
-      clientValue != null ? `Estimated deal value: ${clientValue.toLocaleString()}` : null,
-    ]
-      .filter(Boolean)
-      .join(' · ') || '(none recorded)'
-
-  const instructions = `You are a proposal strategist for ${label} projects. Before a proposal is written, you synthesize everything from a client meeting into a single, decision-ready brief that the consultant reviews.
-
-${BRIEF_RULES}`
 
   const userContent = [
-    `## MEETING CONTEXT\nClient — ${clientLine}\nAttendees — ${attendeeLine}\nPre-meeting context — ${contextSummary || '(none)'}`,
+    languageDirective(language),
+    `## MEETING CONTEXT\nClient — ${clientCompany || '(unknown)'}\nKnown attendees — ${attendeeLine}`,
     `## CONSULTANT NOTES (authoritative)\n${notesText || '(none)'}`,
     `## PRIMARY TRANSCRIPT (browser audio)\n${browserTranscript || '(none)'}`,
     recallTranscript ? `## FALLBACK TRANSCRIPT (Recall.ai)\n${recallTranscript}` : null,
     liveContext ? `## IN-MEETING CO-PILOT CONVERSATION\n${liveContext}` : null,
     renderAiSuggestions(aiSuggestions),
-    `## POST-MEETING Q&A\n${qaContext || '(none)'}`,
   ]
     .filter(Boolean)
     .join('\n\n')
 
-  const systemBlocks: Anthropic.TextBlockParam[] = [
-    { type: 'text', text: instructions, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: `## USER PRODUCT CATALOG\n${catalogBlock}`, cache_control: { type: 'ephemeral' } },
-  ]
-  const refBlock = referenceSystemBlock(referenceProposals)
-  if (refBlock) systemBlocks.push(refBlock)
-
   const msg = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
-    system: systemBlocks,
+    max_tokens: 4096,
+    system: [{ type: 'text', text: MINUTE_INSTRUCTIONS, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userContent }],
   })
 
-  const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '{}'
-  return parseBriefJson(text)
+  return msg.content[0]?.type === 'text' ? msg.content[0].text : ''
 }
 
-/** Render the reviewed brief as a compact, labeled block for the proposal prompt. */
-function renderBrief(brief: ProposalBrief | undefined): string | null {
-  if (!brief) return null
-  const lines: string[] = []
-  if (brief.overview) lines.push(`Overview: ${brief.overview}`)
-  if (brief.clientGoals.length)
-    lines.push(`Client goals:\n${brief.clientGoals.map((g) => `- ${g}`).join('\n')}`)
-  if (brief.priorities.length) {
-    const pr = brief.priorities
-      .map(
-        (p, i) =>
-          `${i + 1}. [${p.priority.toUpperCase()}] ${p.title}${p.detail ? ` — ${p.detail}` : ''}`,
-      )
-      .join('\n')
-    lines.push(`Prioritized action items (highest first):\n${pr}`)
-  }
-  if (brief.scope.length) lines.push(`In scope:\n${brief.scope.map((s) => `- ${s}`).join('\n')}`)
-  if (brief.outOfScope.length)
-    lines.push(`Out of scope:\n${brief.outOfScope.map((s) => `- ${s}`).join('\n')}`)
-  if (brief.recommendedProducts.length)
-    lines.push(`Recommended catalog items: ${brief.recommendedProducts.join(', ')}`)
-  if (brief.budgetNotes) lines.push(`Budget: ${brief.budgetNotes}`)
-  if (brief.timelineNotes) lines.push(`Timeline: ${brief.timelineNotes}`)
-  if (brief.openQuestions.length)
-    lines.push(`Open questions:\n${brief.openQuestions.map((s) => `- ${s}`).join('\n')}`)
-  return lines.length ? lines.join('\n\n') : null
+interface TranscriptSummaryInput {
+  browserTranscript: string
+  recallTranscript: string
+  notesText: string
+  language: string | null
+}
+
+const SUMMARY_INSTRUCTIONS = `You write a concise NARRATIVE SUMMARY of a business meeting from its transcript.
+
+Your job: let someone who missed the meeting understand in two minutes what happened — who met, what the client needs, what was discussed, and where things landed.
+
+Writing style: direct and concrete; short paragraphs and tight bullets; every sentence carries a specific fact from the transcript. No filler, no invented detail, say each thing once.
+
+Output structure — Markdown, use exactly these ## headers (translated into the output language):
+## Overview
+2–4 sentences: who met, why, and the single most important outcome.
+## Key Points
+Bulleted; the substance of the conversation, in the order it mattered (not chronological small talk).
+## Next Steps
+Bulleted; what happens after this meeting, with owners/dates when stated. Omit if none were discussed.
+
+Return only the Markdown content — no preamble, no commentary, and no top-level title (the app supplies the document title).`
+
+export async function generateTranscriptSummary({
+  browserTranscript,
+  recallTranscript,
+  notesText,
+  language,
+}: TranscriptSummaryInput): Promise<string> {
+  const userContent = [
+    languageDirective(language),
+    `## CONSULTANT NOTES (authoritative)\n${notesText || '(none)'}`,
+    `## PRIMARY TRANSCRIPT (browser audio)\n${browserTranscript || '(none)'}`,
+    recallTranscript ? `## FALLBACK TRANSCRIPT (Recall.ai)\n${recallTranscript}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+
+  const msg = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 3072,
+    system: [{ type: 'text', text: SUMMARY_INSTRUCTIONS, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: userContent }],
+  })
+
+  return msg.content[0]?.type === 'text' ? msg.content[0].text : ''
+}
+
+export interface MatchedReferenceInput {
+  title: string
+  summary: string
+  full_text?: string | null
+}
+
+const MAX_MATCHED_REFERENCE_CHARS = 20000
+
+/** The matched past proposal, rendered for the per-call user content (never cached). */
+function renderMatchedReference(ref: MatchedReferenceInput | null | undefined): string | null {
+  if (!ref) return null
+  const body = ref.full_text?.trim()
+    ? ref.full_text.trim().slice(0, MAX_MATCHED_REFERENCE_CHARS)
+    : ref.summary
+  return `## MATCHED PAST PROPOSAL — "${ref.title}" (most similar past project)\nMirror this proposal's scope structure, section flow, timeline estimates, and how services are packaged and quantified — adapted to what THIS client asked for. Unit prices still come ONLY from the live catalog, never from here.\n\n${body}`
 }
 
 interface GenerateProposalInput {
@@ -405,12 +508,13 @@ interface GenerateProposalInput {
   recallTranscript: string
   notesText: string
   products: Product[]
-  chatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
   liveChatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
   aiSuggestions?: string[]
   meetingType: MeetingType
-  referenceProposals?: ReferenceSummaryInput[]
-  brief?: ProposalBrief
+  contextSummary: string | null
+  clientCompany: string | null
+  matchedReference?: MatchedReferenceInput | null
+  language: string | null
 }
 
 export async function generateProposal({
@@ -418,36 +522,34 @@ export async function generateProposal({
   recallTranscript,
   notesText,
   products,
-  chatHistory,
   liveChatHistory,
   aiSuggestions,
   meetingType,
-  referenceProposals,
-  brief,
+  contextSummary,
+  clientCompany,
+  matchedReference,
+  language,
 }: GenerateProposalInput): Promise<string> {
   const label = MEETING_TYPE_LABELS[meetingType]
-
-  const qaContext = chatHistory
-    .map((m) => `${m.role === 'assistant' ? 'Claude' : 'Consultant'}: ${m.content}`)
-    .join('\n\n')
 
   const liveContext = liveChatHistory
     .map((m) => `${m.role === 'assistant' ? 'Co-pilot' : 'Consultant'}: ${m.content}`)
     .join('\n\n')
 
   const catalogBlock = renderCatalog(products)
-  const briefBlock = renderBrief(brief)
 
-  const instructions = `You are a proposal writer for ${label} projects. You write CLEAN, DIRECT proposals in Markdown — the kind a busy decision-maker skims in under a minute. When a PROPOSAL BRIEF is provided it is the reviewed, consultant-approved plan; organize the whole proposal around it. The underlying sources are the product catalog, consultant notes, the primary browser transcript, the fallback Recall.ai transcript, the in-meeting co-pilot conversation, and the post-meeting Q&A.
+  const instructions = `You are a proposal writer for ${label} projects. You write CLEAN, DIRECT proposals in Markdown — the kind a busy decision-maker skims in under a minute — in ONE pass from the meeting sources: the product catalog, consultant notes, the primary browser transcript, the fallback Recall.ai transcript, and the in-meeting co-pilot conversation. A MATCHED PAST PROPOSAL may also be provided — the user's most similar past project.
 
 Source priority (highest to lowest authority):
-1. Proposal brief — the reviewed, consultant-approved synthesis and prioritization for this proposal; organize the proposal around it and honor its priority ordering.
-2. Consultant's notes — authoritative; reflects the consultant's own intent and observations.
-3. Post-meeting Q&A — authoritative; resolves ambiguity in the transcripts.
-4. Browser transcript (primary audio) — higher fidelity; trust this over the fallback when they disagree.
-5. Recall.ai transcript (fallback audio) — use only to fill gaps in the primary transcript.
-6. In-meeting co-pilot conversation — the consultant's working hypotheses with the AI during the call, NOT decisions agreed with the client.
-7. In-meeting AI suggestions — AI-generated "consider asking" prompts; use only as hints about what mattered, never as client-confirmed facts.
+1. Consultant's notes — authoritative; reflects the consultant's own intent and observations.
+2. Browser transcript (primary audio) — higher fidelity; trust this over the fallback when they disagree.
+3. Recall.ai transcript (fallback audio) — use only to fill gaps in the primary transcript.
+4. In-meeting co-pilot conversation — the consultant's working hypotheses with the AI during the call, NOT decisions agreed with the client.
+5. In-meeting AI suggestions — AI-generated "consider asking" prompts; use only as hints about what mattered, never as client-confirmed facts.
+
+Matched past proposal rule (when provided):
+- It is the user's most similar PAST project. Mirror its scope structure, section flow, timeline estimates, and how services are packaged/quantified — adapted to what THIS client asked for in the transcript.
+- Its prices are HISTORY: unit prices come ONLY from the live catalog. Never copy a price, line item, or product from the matched proposal that is not in the current catalog.
 
 Writing style (STRICT — this is the point):
 - Direct and concrete. Every sentence must carry a specific fact from the sources — a name, number, date, deliverable, or decision. If a sentence would fit any proposal, delete it.
@@ -462,42 +564,41 @@ Catalog rule:
 - The user's catalog is the ONLY set of offerings you may propose. Do not invent line items, services, or products that are not in the catalog.
 - If the catalog is empty, write the proposal without a line-items table.
 
-Output structure — use exactly these ## headers, and keep each section as short as the content honestly allows:
+Output structure — use exactly these ## headers (translated into the output language), and keep each section as short as the content honestly allows:
 ## Executive Summary
 2–3 sentences: what you will deliver, for whom, and the single most important constraint (budget or deadline). Do not restate it later.
 ## Priorities & Key Deliverables
-A bulleted list ("-"), highest priority first. Each item: the deliverable in **bold**, then " — " and ONE sentence. Use the brief's prioritized items as the backbone and keep their order; otherwise derive them from the sources.
+A bulleted list ("-"), highest priority first. Each item: the deliverable in **bold**, then " — " and ONE sentence. Derive the priorities from what the client emphasized in the sources.
 ## Scope of Work
 Bulleted. Each bullet is one concrete piece of work in **bold** plus a short clause. Add an "Out of scope:" bullet group ONLY if the sources named exclusions.
 ## Timeline & Milestones
-A Markdown table (columns: Phase, Milestone, Deliverable) when the sources support phases/dates; otherwise a short bulleted list. Omit the section if timing is unknown.
+A Markdown table (columns: Phase, Milestone, Deliverable) when the sources support phases/dates; otherwise a short bulleted list. Use the matched past proposal's timeline shape as the model when one is provided. Omit the section if timing is unknown.
 ## Recommended Line Items
 A Markdown table with columns: Item, Category, Description, Unit price. Reference only catalog products by their exact name. Omit this section entirely if the catalog is empty.
 ## Budget & Pricing
 The pricing that follows from the line items plus any stated caps — a short table or ≤2 sentences. Don't re-describe items already in the table above.
 
-${REFERENCE_RULE}
-
 Return only the Markdown content — no preamble, no commentary.`
 
   const userContent = [
-    briefBlock
-      ? `## PROPOSAL BRIEF (authoritative synthesis — organize the proposal around this)\n${briefBlock}`
-      : null,
+    languageDirective(language),
+    `## MEETING CONTEXT\nClient — ${clientCompany || '(unknown)'}\nContext — ${contextSummary || '(none)'}`,
+    renderMatchedReference(matchedReference),
     `## CONSULTANT NOTES (authoritative)\n${notesText || '(none)'}`,
     `## PRIMARY TRANSCRIPT (browser audio)\n${browserTranscript || '(none)'}`,
     recallTranscript ? `## FALLBACK TRANSCRIPT (Recall.ai)\n${recallTranscript}` : null,
     liveContext ? `## IN-MEETING CO-PILOT CONVERSATION\n${liveContext}` : null,
     renderAiSuggestions(aiSuggestions),
-    `## POST-MEETING Q&A\n${qaContext || '(none)'}`,
   ]
     .filter(Boolean)
     .join('\n\n')
 
+  // The matched reference supersedes the old cached "all references" system
+  // block for proposal generation — instructions + catalog stay cached.
   const msg = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 6144,
-    system: buildSystemBlocks(instructions, catalogBlock, referenceProposals),
+    system: buildSystemBlocks(instructions, catalogBlock, undefined),
     messages: [{ role: 'user', content: userContent }],
   })
 
@@ -525,96 +626,32 @@ ${transcript}`,
   })
 }
 
-interface PostMeetingChatInput {
-  browserTranscript: string
-  recallTranscript: string
-  notesText: string
-  products: Product[]
-  chatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
-  liveChatHistory: Array<{ role: 'user' | 'assistant'; content: string }>
-  aiSuggestions?: string[]
-  referenceProposals?: ReferenceSummaryInput[]
-}
-
-export function streamPostMeetingChat({
-  browserTranscript,
-  recallTranscript,
-  notesText,
-  products,
-  chatHistory,
-  liveChatHistory,
-  aiSuggestions,
-  referenceProposals,
-}: PostMeetingChatInput) {
-  const messages: Anthropic.MessageParam[] = chatHistory.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }))
-
-  if (messages.length === 0) {
-    messages.push({ role: 'user', content: 'Start the post-meeting Q&A.' })
-  }
-
-  const liveContext = liveChatHistory
-    .map((m) => `${m.role === 'assistant' ? 'Co-pilot' : 'Consultant'}: ${m.content}`)
-    .join('\n\n')
-
-  const catalogBlock = renderCatalog(products)
-
-  const instructions = `You are preparing to write a project proposal based on a client meeting.
-You will draft questions targeted to fill the gaps that matter for matching the user's catalog to what the client said.
-
-Source priority (highest to lowest authority):
-1. Consultant's notes — authoritative.
-2. Post-meeting Q&A — authoritative.
-3. Browser transcript (primary audio) — higher fidelity.
-4. Recall.ai transcript (fallback audio) — use only to fill gaps.
-5. In-meeting co-pilot conversation — hypotheses, not decisions.
-6. In-meeting AI suggestions — AI-generated prompts; hints only, not client-confirmed.
-
-Your job: ask the consultant 3-5 targeted questions ONE AT A TIME to fill gaps. Prioritize questions that determine WHICH catalog products to recommend and at what quantity/configuration — budget range, hard deadlines, decision makers, must-have vs nice-to-have features, existing systems.
-
-Skip any topic already settled in the notes, transcript, or earlier Q&A.
-
-After enough questions are answered (or the consultant says they're done), reply with exactly: [READY_TO_GENERATE]`
-
-  const contextBlock = [
-    `## USER PRODUCT CATALOG\n${catalogBlock}`,
-    `## CONSULTANT NOTES (authoritative)\n${notesText || '(none)'}`,
-    `## PRIMARY TRANSCRIPT (browser audio)\n${browserTranscript || '(none)'}`,
-    recallTranscript ? `## FALLBACK TRANSCRIPT (Recall.ai)\n${recallTranscript}` : null,
-    liveContext ? `## IN-MEETING CO-PILOT CONVERSATION\n${liveContext}` : null,
-    renderAiSuggestions(aiSuggestions),
-  ]
-    .filter(Boolean)
-    .join('\n\n')
-
-  const systemBlocks: Anthropic.TextBlockParam[] = [
-    { type: 'text', text: instructions, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: contextBlock, cache_control: { type: 'ephemeral' } },
-  ]
-  const refBlock = referenceSystemBlock(referenceProposals)
-  if (refBlock) systemBlocks.push(refBlock)
-
-  return anthropic.messages.stream({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 512,
-    system: systemBlocks,
-    messages,
-  })
-}
-
-// ── Proposal refine ─────────────────────────────────────────────────
-// Two-mode streaming for a focused refine drawer on the proposal page.
-// `mode: 'chat'` returns conversational suggestions (Claude explains
-// what it would change and asks for confirmation). `mode: 'apply'`
-// returns the FULL rewritten proposal markdown that the client then
-// hydrates into the Tiptap editor.
+// ── Document refine ─────────────────────────────────────────────────
+// Two-mode streaming for the refine drawer on any document page (minute,
+// summary, or proposal). `mode: 'chat'` returns conversational suggestions
+// (Claude explains what it would change and asks for confirmation).
+// `mode: 'apply'` returns the FULL rewritten document markdown that the client
+// then hydrates into the Tiptap editor.
 
 export type RefineMode = 'chat' | 'apply'
 
+const DOC_TYPE_NOUNS: Record<DocType, string> = {
+  minute: 'meeting minutes document',
+  summary: 'meeting transcript summary',
+  proposal: 'project proposal',
+}
+
+const DOC_TYPE_SECTIONS: Record<DocType, string> = {
+  minute:
+    '## Attendees, ## Topics Discussed, ## Decisions, ## Action Items, ## Open Questions',
+  summary: '## Overview, ## Key Points, ## Next Steps',
+  proposal:
+    '## Executive Summary, ## Priorities & Key Deliverables, ## Scope of Work, ## Timeline & Milestones, ## Recommended Line Items, ## Budget & Pricing',
+}
+
 interface RefineInput {
   mode: RefineMode
+  docType: DocType
   currentMarkdown: string
   history: Array<{ role: 'user' | 'assistant'; content: string }>
   products: Product[]
@@ -622,8 +659,9 @@ interface RefineInput {
   referenceProposals?: ReferenceSummaryInput[]
 }
 
-export function streamProposalRefine({
+export function streamDocumentRefine({
   mode,
+  docType,
   currentMarkdown,
   history,
   products,
@@ -631,37 +669,41 @@ export function streamProposalRefine({
   referenceProposals,
 }: RefineInput) {
   const label = MEETING_TYPE_LABELS[meetingType]
+  const noun = DOC_TYPE_NOUNS[docType]
+  const isProposal = docType === 'proposal'
   const catalogBlock = renderCatalog(products)
 
-  const sharedRules = `Catalog rule:
+  const catalogRules = `Catalog rule:
 - The user's catalog is the ONLY set of offerings you may propose. Do not invent line items, services, or products that are not in the catalog.
 - If the catalog is empty, prefer narrative changes over inventing pricing.
 
-Writing style (preserve it): direct and concrete, bullet-forward, no preamble or filler, no empty assurances ("efficiently and effectively", "seamless", "world-class", "ensure alignment"), no closing pitch. Every sentence carries a specific fact; say each thing once. Don't reintroduce padding the proposal already avoids.
-
 ${REFERENCE_RULE}
+`
 
-Source priority: notes + Q&A are authoritative; transcripts are reference.`
+  const sharedRules = `${isProposal ? catalogRules : ''}
+Writing style (preserve it): direct and concrete, bullet-forward, no preamble or filler, no empty assurances ("efficiently and effectively", "seamless", "world-class", "ensure alignment"), no closing pitch. Every sentence carries a specific fact; say each thing once. Don't reintroduce padding the document already avoids.
 
-  const chatInstructions = `You are revising an existing project proposal for a ${label} engagement, working with the consultant in a back-and-forth refinement chat.
+Keep the document's existing language — do not translate it unless explicitly asked.`
+
+  const chatInstructions = `You are revising an existing ${noun} for a ${label} engagement, working with the consultant in a back-and-forth refinement chat.
 
 ${sharedRules}
 
 Your behavior in this turn:
-- Read the consultant's request and the CURRENT PROPOSAL below.
-- Reply conversationally (3-6 sentences). Be specific about what you would change and where (which section, which line item, which sentence).
+- Read the consultant's request and the CURRENT DOCUMENT below.
+- Reply conversationally (3-6 sentences). Be specific about what you would change and where (which section, which line, which sentence).
 - Ask one clarifying question if the request is ambiguous.
-- DO NOT rewrite the proposal here. The consultant will click "Apply changes" when ready, which triggers a separate rewrite pass.`
+- DO NOT rewrite the document here. The consultant will click "Apply changes" when ready, which triggers a separate rewrite pass.`
 
-  const applyInstructions = `You are revising an existing project proposal for a ${label} engagement.
+  const applyInstructions = `You are revising an existing ${noun} for a ${label} engagement.
 
 ${sharedRules}
 
 Your behavior in this turn:
-- Apply the consultant's accumulated requests from the chat to the CURRENT PROPOSAL.
-- Return ONLY the FULL revised proposal in Markdown — no preamble, no chat, no code fences around the whole thing.
+- Apply the consultant's accumulated requests from the chat to the CURRENT DOCUMENT.
+- Return ONLY the FULL revised document in Markdown — no preamble, no chat, no code fences around the whole thing.
 - Preserve all unchanged content verbatim. Only change what the chat asked you to change.
-- Keep the section structure (## Executive Summary, ## Priorities & Key Deliverables, ## Scope of Work, ## Timeline & Milestones, ## Recommended Line Items, ## Budget & Pricing) unless the chat explicitly removed a section.`
+- Keep the section structure (${DOC_TYPE_SECTIONS[docType]}) unless the chat explicitly removed a section.`
 
   const messages: Anthropic.MessageParam[] = history.map((m) => ({
     role: m.role,
@@ -673,9 +715,11 @@ Your behavior in this turn:
   }
 
   const contextBlock = [
-    `## USER PRODUCT CATALOG\n${catalogBlock}`,
-    `## CURRENT PROPOSAL (Markdown)\n${currentMarkdown || '(empty)'}`,
-  ].join('\n\n')
+    isProposal ? `## USER PRODUCT CATALOG\n${catalogBlock}` : null,
+    `## CURRENT DOCUMENT (Markdown)\n${currentMarkdown || '(empty)'}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 
   const refineSystem: Anthropic.TextBlockParam[] = [
     {
@@ -685,7 +729,7 @@ Your behavior in this turn:
     },
     { type: 'text', text: contextBlock, cache_control: { type: 'ephemeral' } },
   ]
-  const refineRefBlock = referenceSystemBlock(referenceProposals)
+  const refineRefBlock = isProposal ? referenceSystemBlock(referenceProposals) : null
   if (refineRefBlock) refineSystem.push(refineRefBlock)
 
   return anthropic.messages.stream({

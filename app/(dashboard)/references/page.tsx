@@ -48,8 +48,9 @@ export default function ReferencesPage() {
 
   const loadProposals = React.useCallback(async () => {
     const { data } = await supabase
-      .from('proposals')
+      .from('meeting_documents')
       .select('id, created_at, meetings(title, client_company)')
+      .eq('doc_type', 'proposal')
       .order('created_at', { ascending: false })
     type MeetingRel = { title?: string; client_company?: string | null }
     const opts: ProposalOption[] = (data ?? []).map((row: Record<string, unknown>) => {

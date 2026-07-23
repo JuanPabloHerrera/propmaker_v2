@@ -216,9 +216,6 @@ function coverSecondary(meeting: Meeting | null, profile: UserProfile | null): s
   const company = meeting?.client_company?.trim()
   if (title && company && title.toLowerCase() !== company.toLowerCase()) return title
   if (profile?.tagline?.trim()) return profile.tagline.trim()
-  if (meeting?.client_value && meeting.client_value > 0) {
-    return `Estimated value: ${new Intl.NumberFormat('en-US').format(meeting.client_value)}`
-  }
   return ''
 }
 

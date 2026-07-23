@@ -21,7 +21,7 @@ export async function getSidebarCounts(userId: string): Promise<SidebarCounts> {
       .eq('user_id', userId)
       .eq('active', true),
     supabase
-      .from('proposals')
+      .from('meeting_documents')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId),
     supabase

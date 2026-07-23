@@ -1,11 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import type { SupabaseClient, User } from '@supabase/supabase-js'
-import { summarizeReferenceText, summarizeReferencePdf } from '@/lib/claude'
+import { summarizeReferenceText, summarizeReferencePdf, extractReferencePdfText } from '@/lib/claude'
 import {
   extractDocxText,
   decodePlainText,
   isAcceptedReferenceFile,
+  MAX_REFERENCE_CHARS,
 } from '@/lib/reference-extract'
 import { extractPptxTheme, themeForStorage } from '@/lib/pptx-theme'
 
@@ -115,6 +116,9 @@ export async function POST(request: Request) {
   if (!title) return NextResponse.json({ error: 'Title is required' }, { status: 400 })
 
   let summary = ''
+  // Full extracted text (≤40k chars), stored so this reference can be injected
+  // verbatim when it's the matched past proposal at generation time.
+  let fullText = ''
   let originalFilename: string | null = null
 
   try {
@@ -131,13 +135,22 @@ export async function POST(request: Request) {
       originalFilename = file.name
       const buf = await file.arrayBuffer()
       if (file.type === 'application/pdf') {
-        summary = await summarizeReferencePdf(Buffer.from(buf).toString('base64'))
+        const pdfBase64 = Buffer.from(buf).toString('base64')
+        const [pdfSummary, pdfText] = await Promise.all([
+          summarizeReferencePdf(pdfBase64),
+          extractReferencePdfText(pdfBase64),
+        ])
+        summary = pdfSummary
+        fullText = pdfText
       } else if (file.type === DOCX) {
-        summary = await summarizeReferenceText(await extractDocxText(buf))
+        fullText = await extractDocxText(buf)
+        summary = await summarizeReferenceText(fullText)
       } else {
-        summary = await summarizeReferenceText(decodePlainText(buf))
+        fullText = decodePlainText(buf)
+        summary = await summarizeReferenceText(fullText)
       }
     } else if (pastedText) {
+      fullText = pastedText
       summary = await summarizeReferenceText(pastedText)
     } else {
       return NextResponse.json({ error: 'Upload a file or paste proposal text.' }, { status: 400 })
@@ -159,6 +172,7 @@ export async function POST(request: Request) {
       title,
       category,
       summary,
+      full_text: fullText.trim() ? fullText.slice(0, MAX_REFERENCE_CHARS) : null,
       source: 'uploaded',
       original_filename: originalFilename,
     })

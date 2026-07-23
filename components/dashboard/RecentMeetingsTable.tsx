@@ -63,16 +63,10 @@ export function RecentMeetingsTable({ meetings }: Props) {
       {meetings.map((m, i) => {
         const href =
           m.status === 'completed'
-            ? `/meetings/${m.id}/proposal`
+            ? `/meetings/${m.id}/documents`
             : `/meetings/${m.id}/live`
         const attendees = m.attendees?.map((a) => a.name).filter(Boolean).join(', ') ?? ''
-        const when = m.scheduled_at
-          ? format(new Date(m.scheduled_at), "MMM d · h:mm a")
-          : format(new Date(m.created_at), 'MMM d')
-        const isOverdueUpcoming =
-          m.deal_status === 'upcoming' &&
-          m.scheduled_at != null &&
-          new Date(m.scheduled_at).getTime() < Date.now()
+        const when = format(new Date(m.created_at), 'MMM d')
         return (
           <Link
             key={m.id}
@@ -83,8 +77,6 @@ export function RecentMeetingsTable({ meetings }: Props) {
               padding: '12px 18px',
               borderBottom:
                 i < meetings.length - 1 ? '0.5px solid var(--line-1)' : 'none',
-              background:
-                m.deal_status === 'upcoming' ? 'rgba(77,138,107,0.04)' : 'transparent',
             }}
           >
             <div className="text-[12.5px] font-medium truncate" style={{ color: 'var(--ink-1)' }}>
@@ -105,22 +97,9 @@ export function RecentMeetingsTable({ meetings }: Props) {
             </div>
             <div className="text-[12px] flex flex-col" style={{ color: 'var(--ink-2)' }}>
               <span>{when}</span>
-              {isOverdueUpcoming && (
-                <span
-                  className="text-[10.5px] uppercase tracking-wider font-mono"
-                  style={{ color: 'var(--warn)' }}
-                  aria-label="Scheduled time has passed"
-                >
-                  Overdue
-                </span>
-              )}
             </div>
             <div>
-              <MeetingStatusMenu
-                meetingId={m.id}
-                status={m.deal_status}
-                value={m.client_value}
-              />
+              <MeetingStatusMenu meetingId={m.id} status={m.deal_status} />
             </div>
             <span style={{ color: 'var(--ink-3)' }}>
               <Icon name="chevR" size={12} />

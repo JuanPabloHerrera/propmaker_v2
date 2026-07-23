@@ -5,7 +5,7 @@ import { SignatureBlock } from '@/components/proposal/SignatureBlock'
 import { AutoPrint } from '@/components/proposal/AutoPrint'
 import { RecordOpen } from './RecordOpen'
 import { brandStyleBlock } from '@/lib/brand'
-import type { Proposal, UserProfile, Meeting } from '@/types'
+import { DOC_TYPE_LABELS, type MeetingDocument, type UserProfile, type Meeting } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,16 +18,17 @@ export default async function PublicProposalPage({ params }: PageProps) {
   const supabase = await createClient()
 
   // The "Public read shared proposals" RLS policy permits unauthenticated reads
-  // when public_slug is set, so this works without a session.
-  const { data: proposal } = await supabase
-    .from('proposals')
+  // when public_slug is set, so this works without a session. Works for all
+  // document types (minute / summary / proposal).
+  const { data: document } = await supabase
+    .from('meeting_documents')
     .select('*')
     .eq('public_slug', slug)
     .maybeSingle()
 
-  if (!proposal) notFound()
+  if (!document) notFound()
 
-  const p = proposal as Proposal
+  const p = document as MeetingDocument
 
   // Look up the meeting + profile via service-role-equivalent fetches.
   // Since we only have anon access here and the profile/meeting tables aren't
@@ -38,7 +39,7 @@ export default async function PublicProposalPage({ params }: PageProps) {
   let companyName: string | null = null
   let logoUrl: string | null = null
   let brandColors: string[] = []
-  let title = 'Proposal'
+  let title = p.title || DOC_TYPE_LABELS[p.doc_type]
 
   // The "Public read profiles of users with shared proposals" RLS policy
   // (migration 006) lets anon clients read signature + brand fields for
@@ -52,7 +53,7 @@ export default async function PublicProposalPage({ params }: PageProps) {
       .maybeSingle()
     if (meetingRes.data) {
       const m = meetingRes.data as Pick<Meeting, 'title' | 'client_company'>
-      title = m.client_company || m.title || 'Proposal'
+      title = m.client_company || m.title || title
     }
 
     const profileRes = await supabase
@@ -84,11 +85,11 @@ export default async function PublicProposalPage({ params }: PageProps) {
       {brandCss && <style dangerouslySetInnerHTML={{ __html: brandCss }} />}
       <div className="proposal-paper">
         <ProposalEditor
-          meetingId={p.meeting_id}
+          documentId={p.id}
           initialJson={p.content_json ?? null}
           readOnly
         />
-        {(signatureName || companyName || logoUrl) && (
+        {p.doc_type === 'proposal' && (signatureName || companyName || logoUrl) && (
           <SignatureBlock
             signatureName={signatureName}
             signatureTitle={signatureTitle}

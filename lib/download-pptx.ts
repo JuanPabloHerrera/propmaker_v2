@@ -2,8 +2,13 @@
 
 import { toast } from 'sonner'
 
-const PPTX_CT =
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+export type ExportFormat = 'pptx' | 'docx' | 'pdf'
+
+const FORMAT_CT: Record<ExportFormat, string> = {
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  pdf: 'application/pdf',
+}
 
 function triggerBrowserDownload(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob)
@@ -16,7 +21,7 @@ function triggerBrowserDownload(blob: Blob, name: string) {
   URL.revokeObjectURL(url)
 }
 
-function filenameFrom(res: Response, fallback = 'proposal.pptx'): string {
+function filenameFrom(res: Response, fallback = 'document.pptx'): string {
   const cd = res.headers.get('Content-Disposition') || ''
   return /filename="([^"]+)"/.exec(cd)?.[1] ?? fallback
 }
@@ -37,20 +42,20 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
- * Instant export (no template): the serverless route builds a fast branded deck
- * with pptxgenjs and streams it back. Toasts on failure.
+ * Instant export (pptx only, no Claude): the serverless route builds a fast
+ * branded deck with pptxgenjs and streams it back. Toasts on failure.
  */
 export async function downloadProposalPptx(
-  proposalId: string | null | undefined,
+  documentId: string | null | undefined,
   templateId?: string | null,
 ) {
-  if (!proposalId) {
-    toast.info('Save the proposal first.')
+  if (!documentId) {
+    toast.info('Generate the document first.')
     return
   }
   try {
     const qs = templateId ? `?template=${encodeURIComponent(templateId)}` : ''
-    const res = await fetch(`/api/proposals/${proposalId}/export/pptx${qs}`)
+    const res = await fetch(`/api/documents/${documentId}/export${qs}`)
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
       throw new Error(err.error ?? 'Export failed')
@@ -63,24 +68,34 @@ export async function downloadProposalPptx(
 
 export type DeckBuildStatus = 'queued' | 'running' | 'succeeded' | 'failed'
 
+/** Which builder produced the delivered file. `fast` = Claude was unavailable
+ *  and we served the lite pptxgenjs fallback (pptx only, with `note` = why). */
+export type DeckBuildResult = { engine: 'skill' | 'fast'; note?: string }
+
 /**
- * High-fidelity export (template selected): POST starts a background job where
- * Claude reproduces the brand template on every slide via its `pptx` skill;
- * we then poll the download endpoint until the finished .pptx is ready and
- * trigger the browser download. Resolves when done, rejects (with a friendly
- * message) on terminal failure or timeout. Honors an AbortSignal for unmount.
+ * The canonical export for every format: POST starts a background job where
+ * Claude builds the file inside a code-execution container via its document
+ * skill (pptx / docx / pdf) — reproducing the brand template on every slide
+ * when one is selected for pptx, or designing from the user's brand otherwise.
+ * We then poll the download endpoint until the finished file is ready and
+ * trigger the browser download. Resolves with the engine that produced the file
+ * (so the caller can warn on the pptx `fast` fallback), rejects (with a
+ * friendly message) on terminal failure or timeout. Honors an AbortSignal.
  */
 export async function startBrandedDeckBuild(
-  proposalId: string,
-  templateId: string,
-  opts: { signal?: AbortSignal; onStatus?: (s: DeckBuildStatus) => void } = {},
-): Promise<void> {
+  documentId: string,
+  templateId: string | null,
+  opts: { signal?: AbortSignal; onStatus?: (s: DeckBuildStatus) => void; format?: ExportFormat } = {},
+): Promise<DeckBuildResult> {
   const { signal, onStatus } = opts
+  const format = opts.format ?? 'pptx'
 
-  const start = await fetch(
-    `/api/proposals/${proposalId}/export/pptx?template=${encodeURIComponent(templateId)}`,
-    { method: 'POST', signal },
-  )
+  const qs = new URLSearchParams({ format })
+  if (templateId) qs.set('template', templateId)
+  const start = await fetch(`/api/documents/${documentId}/export?${qs}`, {
+    method: 'POST',
+    signal,
+  })
   if (!start.ok) {
     const err = await start.json().catch(() => ({}))
     throw new Error(err.error ?? 'Could not start the export.')
@@ -89,7 +104,7 @@ export async function startBrandedDeckBuild(
   if (!jobId) throw new Error('Could not start the export.')
   onStatus?.('running')
 
-  const dlUrl = `/api/proposals/${proposalId}/export/pptx/download?job=${jobId}`
+  const dlUrl = `/api/documents/${documentId}/export/download?job=${jobId}`
   const deadline = Date.now() + 6 * 60 * 1000 // ~6 min client-side ceiling
 
   while (Date.now() < deadline) {
@@ -104,10 +119,12 @@ export async function startBrandedDeckBuild(
     if (!res.ok) throw new Error('Export failed')
 
     const ct = res.headers.get('Content-Type') || ''
-    if (ct.includes(PPTX_CT) || ct.includes('presentation')) {
-      triggerBrowserDownload(await res.blob(), filenameFrom(res))
+    if (ct.includes(FORMAT_CT[format]) || ct.includes('officedocument') || ct.includes('pdf')) {
+      triggerBrowserDownload(await res.blob(), filenameFrom(res, `document.${format}`))
       onStatus?.('succeeded')
-      return
+      const engine = res.headers.get('X-Deck-Engine') === 'fast' ? 'fast' : 'skill'
+      const note = res.headers.get('X-Deck-Note') || undefined
+      return { engine, note }
     }
     // 200 JSON → terminal status (e.g. failed).
     const body = (await res.json().catch(() => ({}))) as {

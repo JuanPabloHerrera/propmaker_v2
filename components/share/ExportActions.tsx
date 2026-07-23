@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { toast } from 'sonner'
 import { Icon } from '@/components/ui/icon'
-import { downloadProposalPptx, startBrandedDeckBuild } from '@/lib/download-pptx'
+import { startBrandedDeckBuild, type ExportFormat } from '@/lib/download-pptx'
 import type { ReferenceProposal } from '@/types'
 
 interface Props {
@@ -14,8 +14,14 @@ interface Props {
   proposalId?: string | null
 }
 
+const FORMAT_LABEL: Record<ExportFormat, string> = {
+  pptx: 'PowerPoint',
+  docx: 'Word',
+  pdf: 'PDF',
+}
+
 export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Props) {
-  const [exporting, setExporting] = React.useState(false)
+  const [exporting, setExporting] = React.useState<ExportFormat | null>(null)
   const [buildLabel, setBuildLabel] = React.useState('')
   const [templates, setTemplates] = React.useState<ReferenceProposal[]>([])
   const [templateId, setTemplateId] = React.useState('')
@@ -36,46 +42,52 @@ export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Pro
     })()
   }, [])
 
-  function comingSoon(label: string) {
-    toast.info(`${label} export coming soon.`)
-  }
-
-  async function exportPptx() {
+  async function exportAs(format: ExportFormat) {
     if (exporting) return
     if (!proposalId) {
-      toast.info('Save the proposal first.')
+      toast.info('Generate the document first.')
       return
     }
-    // No template → instant fast branded deck. Template → Claude reproduces the
-    // template on every slide via its pptx skill (a couple-minute background job).
-    if (!templateId) {
-      setExporting(true)
-      try {
-        await downloadProposalPptx(proposalId, null)
-      } finally {
-        setExporting(false)
-      }
-      return
-    }
-    setExporting(true)
+    // Claude always builds the file (a couple-minute background job): pptx with
+    // a template reproduces it on every slide; otherwise it designs from the
+    // user's brand. Word/PDF are branded letter-format documents.
+    setExporting(format)
     setBuildLabel('Building…')
     const ctrl = new AbortController()
     ctrlRef.current = ctrl
     toast.info(
-      'Building your branded deck — this takes a couple of minutes. The download starts automatically when it’s ready.',
+      `Building your branded ${FORMAT_LABEL[format]} — this takes a couple of minutes. The download starts automatically when it’s ready.`,
     )
     try {
-      await startBrandedDeckBuild(proposalId, templateId, {
-        signal: ctrl.signal,
-        onStatus: (s) => setBuildLabel(s === 'succeeded' ? 'Done' : 'Building…'),
-      })
-      toast.success('Your branded deck is ready.')
+      const { engine, note } = await startBrandedDeckBuild(
+        proposalId,
+        format === 'pptx' ? templateId || null : null,
+        {
+          signal: ctrl.signal,
+          format,
+          onStatus: (s) => setBuildLabel(s === 'succeeded' ? 'Done' : 'Building…'),
+        },
+      )
+      if (engine === 'fast') {
+        toast.warning(
+          note
+            ? `Delivered a lite deck — the Claude build was unavailable: ${note}`
+            : 'Delivered a lite deck — the Claude build was unavailable.',
+        )
+      } else {
+        toast.success(`Your branded ${FORMAT_LABEL[format]} is ready.`)
+      }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === 'AbortError')) {
-        toast.error(e instanceof Error ? e.message : 'Export failed')
+        const msg = e instanceof Error ? e.message : 'Export failed'
+        if (format === 'pdf' && proposalSlug) {
+          toast.error(`${msg} — try the quick print view below instead.`)
+        } else {
+          toast.error(msg)
+        }
       }
     } finally {
-      setExporting(false)
+      setExporting(null)
       setBuildLabel('')
       ctrlRef.current = null
     }
@@ -90,6 +102,17 @@ export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Pro
       toast.info('Create a share link first.')
     }
   }
+
+  const exportButtonStyle = (active: boolean): React.CSSProperties => ({
+    height: 30,
+    padding: '0 9px',
+    borderRadius: 7,
+    fontSize: 12,
+    color: 'var(--ink-1)',
+    background: 'rgba(255,255,255,0.6)',
+    border: '0.5px solid rgba(28,24,20,0.10)',
+    opacity: exporting && !active ? 0.5 : 1,
+  })
 
   return (
     <div
@@ -107,7 +130,7 @@ export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Pro
             value={templateId}
             onChange={(e) => setTemplateId(e.target.value)}
           >
-            <option value="">None · brand colors</option>
+            <option value="">None · build from brand</option>
             {templates.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.title}
@@ -117,59 +140,19 @@ export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Pro
         </label>
       )}
       <div className="flex gap-2.5">
-        <button
-          type="button"
-          onClick={openPrintView}
-          className="inline-flex items-center justify-center gap-1.5 flex-1 font-medium"
-          style={{
-            height: 30,
-            padding: '0 9px',
-            borderRadius: 7,
-            fontSize: 12,
-            color: 'var(--ink-1)',
-            background: 'rgba(255,255,255,0.6)',
-            border: '0.5px solid rgba(28,24,20,0.10)',
-          }}
-        >
-          <Icon name="download" size={12} />
-          PDF
-        </button>
-        <button
-          type="button"
-          onClick={exportPptx}
-          disabled={exporting}
-          className="inline-flex items-center justify-center gap-1.5 flex-1 font-medium"
-          style={{
-            height: 30,
-            padding: '0 9px',
-            borderRadius: 7,
-            fontSize: 12,
-            color: 'var(--ink-1)',
-            background: 'rgba(255,255,255,0.6)',
-            border: '0.5px solid rgba(28,24,20,0.10)',
-            opacity: exporting ? 0.5 : 1,
-          }}
-        >
-          <Icon name="box" size={12} />
-          {exporting ? buildLabel || 'Exporting…' : 'PowerPoint'}
-        </button>
-        <button
-          type="button"
-          onClick={() => comingSoon('Notion')}
-          className="inline-flex items-center justify-center gap-1.5 flex-1 font-medium"
-          style={{
-            height: 30,
-            padding: '0 9px',
-            borderRadius: 7,
-            fontSize: 12,
-            color: 'var(--ink-1)',
-            background: 'rgba(255,255,255,0.6)',
-            border: '0.5px solid rgba(28,24,20,0.10)',
-          }}
-        >
-          <Icon name="copy" size={12} />
-          Notion
-        </button>
+        {(['docx', 'pdf', 'pptx'] as ExportFormat[]).map((format) => (
+          <button
+            key={format}
+            type="button"
+            onClick={() => exportAs(format)}
+            disabled={exporting !== null}
+            className="inline-flex items-center justify-center gap-1.5 flex-1 font-medium"
+            style={exportButtonStyle(exporting === format)}
+          >
+            <Icon name={format === 'pptx' ? 'box' : 'download'} size={12} />
+            {exporting === format ? buildLabel || 'Exporting…' : FORMAT_LABEL[format]}
+          </button>
+        ))}
       </div>
       <button
         type="button"
@@ -189,14 +172,16 @@ export function ExportActions({ onSend, sending, proposalSlug, proposalId }: Pro
         }}
       >
         <Icon name="send" size={14} />
-        {sending ? 'Sending…' : 'Send proposal'}
+        {sending ? 'Sending…' : 'Send document'}
       </button>
-      <div
+      <button
+        type="button"
+        onClick={openPrintView}
         className="text-center"
-        style={{ fontSize: 10.5, color: 'var(--ink-3)' }}
+        style={{ fontSize: 10.5, color: 'var(--ink-3)', background: 'none', border: 'none', cursor: 'pointer' }}
       >
-        Recipients will be notified via PropMaker (email send is in preview).
-      </div>
+        Quick PDF via print view · Recipients are notified via PropMaker (email send is in preview).
+      </button>
     </div>
   )
 }

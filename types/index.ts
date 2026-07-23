@@ -13,44 +13,8 @@ export interface MeetingAttendee {
   color?: string
 }
 
-export type BriefPriorityLevel = 'high' | 'medium' | 'low'
-
-/** A single prioritized, defined, actionable item distilled from the meeting. */
-export interface BriefActionItem {
-  title: string
-  detail: string
-  priority: BriefPriorityLevel
-}
-
-/**
- * The pre-proposal synthesis. Generated after the post-meeting Q&A from every
- * input (transcript, notes, Q&A, in-meeting co-pilot, catalog, references, and
- * the pre-meeting context/attendee/client metadata) and reviewed/edited by the
- * consultant on the /brief screen before the proposal is generated. Stored on
- * `meetings.proposal_brief` (jsonb).
- */
-export interface ProposalBrief {
-  /** 2–4 sentence synthesis of the engagement. */
-  overview: string
-  /** What the client said they want to achieve. */
-  clientGoals: string[]
-  /** Prioritized, defined, actionable items — the backbone of the proposal. */
-  priorities: BriefActionItem[]
-  /** In-scope work, as concrete bullets. */
-  scope: string[]
-  /** Explicitly out of scope / deferred. */
-  outOfScope: string[]
-  /** Catalog product names to feature (must come from the user's catalog). */
-  recommendedProducts: string[]
-  /** Budget signals / constraints heard in the meeting. */
-  budgetNotes: string | null
-  /** Timeline / deadline signals heard in the meeting. */
-  timelineNotes: string | null
-  /** Unresolved items that still need clarification. */
-  openQuestions: string[]
-  /** ISO timestamp stamped server-side when generated. */
-  generatedAt: string | null
-}
+/** The kinds of documents a meeting can produce, each a `meeting_documents` row. */
+export type DocType = 'minute' | 'summary' | 'proposal'
 
 export interface UserProfile {
   user_id: string
@@ -77,21 +41,19 @@ export interface Meeting {
   meeting_type: MeetingType
   recall_bot_id: string | null
   meeting_url: string | null
-  scheduled_at: string | null
   status: MeetingStatus
   capture_mode: CaptureMode
-  selected_categories: string[]
   notes_json: TiptapDocument | null
   attendees: MeetingAttendee[]
   context_summary: string | null
   client_company: string | null
-  client_value: number | null
-  attached_product_ids: string[]
-  detected_product_ids: string[]
   deal_status: DealStatus
   live_partial: string | null
   recall_transcript_ready: boolean
-  proposal_brief: ProposalBrief | null
+  /** Dominant transcript language (ISO code); documents are generated in it. */
+  language: string | null
+  /** Set once post-meeting metadata extraction has run (idempotency guard). */
+  metadata_extracted_at: string | null
   created_at: string
   updated_at: string
 }
@@ -128,18 +90,14 @@ export interface Suggestion {
   created_at: string
 }
 
-export interface PostMeetingChatMessage {
-  id: string
-  meeting_id: string
-  role: ChatRole
-  content: string
-  created_at: string
-}
-
-export interface Proposal {
+/** One generated document (minute / summary / proposal) — a `meeting_documents` row. */
+export interface MeetingDocument {
   id: string
   meeting_id: string
   user_id: string
+  doc_type: DocType
+  title: string | null
+  language: string | null
   content_json: TiptapDocument | null
   status: ProposalStatus
   public_slug: string | null
@@ -194,6 +152,8 @@ export interface ReferenceProposal {
   source: ReferenceProposalSource
   source_proposal_id: string | null
   original_filename: string | null
+  /** Extracted document text (≤40k chars) captured at upload; null for legacy uploads. */
+  full_text?: string | null
   // Only set for source==='pptx_template': storage path + extracted display theme.
   file_path?: string | null
   theme_json?: PptxTheme | null
@@ -232,6 +192,12 @@ export const CAPTURE_MODE_LABELS: Record<CaptureMode, string> = {
   browser: 'Local mic',
   recall: 'Conferencing (bot)',
   both: 'Conferencing',
+}
+
+export const DOC_TYPE_LABELS: Record<DocType, string> = {
+  minute: 'Meeting minute',
+  summary: 'Transcript summary',
+  proposal: 'Proposal',
 }
 
 export const PRICE_UNIT_LABELS: Record<PriceUnit, string> = {

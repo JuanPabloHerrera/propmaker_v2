@@ -12,7 +12,7 @@ import type { TiptapDocument, TiptapNode } from '@/types'
 import type { OutlineSection } from './OutlineSidebar'
 
 interface Props {
-  meetingId: string
+  documentId: string
   initialContent?: string
   initialJson?: TiptapDocument | null
   onSectionsChange?: (sections: OutlineSection[]) => void
@@ -219,7 +219,7 @@ function extractSections(editor: Editor): OutlineSection[] {
 }
 
 export function ProposalEditor({
-  meetingId,
+  documentId,
   initialContent,
   initialJson,
   onSectionsChange,
@@ -229,7 +229,7 @@ export function ProposalEditor({
     extensions: [
       StarterKit,
       Placeholder.configure({
-        placeholder: 'Proposal will appear here once the Q&A is complete…',
+        placeholder: 'The document will appear here once generated…',
         emptyEditorClass: 'is-editor-empty',
       }),
       Table.configure({ resizable: !readOnly }),
@@ -261,13 +261,13 @@ export function ProposalEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedSave = useCallback(
     debounce(async (json: unknown) => {
-      await fetch(`/api/meetings/${meetingId}/proposal`, {
-        method: 'POST',
+      await fetch(`/api/documents/${documentId}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content_json: json }),
       })
     }, 1500),
-    [meetingId],
+    [documentId],
   )
 
   useEffect(() => {

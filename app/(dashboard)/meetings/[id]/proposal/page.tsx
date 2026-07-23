@@ -1,275 +1,32 @@
-'use client'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
 
-import * as React from 'react'
-import { useParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { toast } from 'sonner'
-import { OutlineSidebar, type OutlineSection } from '@/components/proposal/OutlineSidebar'
-import { ProposalToolbar } from '@/components/proposal/ProposalToolbar'
-import { ProposalEditor } from '@/components/proposal/ProposalEditor'
-import { SignatureBlock } from '@/components/proposal/SignatureBlock'
-import { RefineDrawer } from '@/components/proposal/RefineDrawer'
-import { Skeleton } from '@/components/ui/skeleton'
-import { brandStyleBlock } from '@/lib/brand'
-import { downloadProposalPptx } from '@/lib/download-pptx'
-import type { Meeting, Proposal, UserProfile } from '@/types'
+/**
+ * Legacy route — the proposal editor now lives at /meetings/[id]/documents/[docId].
+ * Old bookmarks land on the meeting's most recent proposal document, or the
+ * documents hub when none exists yet.
+ */
+export default async function LegacyProposalPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) redirect('/sign-in')
 
-export default function ProposalPage() {
-  const { id } = useParams<{ id: string }>()
-  const supabase = createClient()
+  const { data: doc } = await supabase
+    .from('meeting_documents')
+    .select('id')
+    .eq('meeting_id', id)
+    .eq('user_id', user.id)
+    .eq('doc_type', 'proposal')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-  const [meeting, setMeeting] = React.useState<Meeting | null>(null)
-  const [proposal, setProposal] = React.useState<Proposal | null>(null)
-  const [profile, setProfile] = React.useState<UserProfile | null>(null)
-  const [email, setEmail] = React.useState<string>('')
-  const [sections, setSections] = React.useState<OutlineSection[]>([])
-  const [activeSection, setActiveSection] = React.useState<string | null>(null)
-  const [mode, setMode] = React.useState<'edit' | 'preview'>('edit')
-  const [savedAgo, setSavedAgo] = React.useState<string>('just now')
-  const [statusBusy, setStatusBusy] = React.useState(false)
-  const [refineOpen, setRefineOpen] = React.useState(false)
-  const [exporting, setExporting] = React.useState(false)
-
-  const fetchData = React.useCallback(async () => {
-    // Get the user first so the profile query can filter by user_id — the
-    // public-read RLS policy on user_profiles (for shared proposals) makes an
-    // unfiltered select return multiple rows, which 406s under .single().
-    const { data: { user } } = await supabase.auth.getUser()
-    const [meetingRes, proposalRes, profileRes] = await Promise.all([
-      supabase.from('meetings').select('*').eq('id', id).single(),
-      fetch(`/api/meetings/${id}/proposal`).then((r) => r.json()),
-      user
-        ? supabase.from('user_profiles').select('*').eq('user_id', user.id).maybeSingle()
-        : Promise.resolve({ data: null }),
-    ])
-    if (meetingRes.data) setMeeting(meetingRes.data as Meeting)
-    if (proposalRes) setProposal(proposalRes as Proposal)
-    if (profileRes.data) setProfile(profileRes.data as UserProfile)
-    if (user?.email) setEmail(user.email)
-  }, [id, supabase])
-
-  React.useEffect(() => {
-    fetchData()
-  }, [fetchData])
-
-  // Light "saved Xs ago" indicator
-  React.useEffect(() => {
-    const t = setInterval(() => {
-      if (proposal?.updated_at) {
-        const secs = Math.round(
-          (Date.now() - new Date(proposal.updated_at).getTime()) / 1000,
-        )
-        if (secs < 60) setSavedAgo(`${secs}s ago`)
-        else setSavedAgo(`${Math.round(secs / 60)} min ago`)
-      }
-    }, 5000)
-    return () => clearInterval(t)
-  }, [proposal?.updated_at])
-
-  function jumpTo(sectionId: string) {
-    const el = document.getElementById(sectionId)
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      setActiveSection(sectionId)
-    }
-  }
-
-  async function toggleStatus() {
-    if (!proposal || statusBusy) return
-    const prev = proposal.status
-    const next = prev === 'final' ? 'draft' : 'final'
-    setStatusBusy(true)
-    // Optimistic: flip the pill immediately so the user gets instant
-    // feedback. Revert on API failure.
-    setProposal((p) => (p ? { ...p, status: next } : p))
-    try {
-      const res = await fetch(`/api/meetings/${id}/proposal`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: next }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update status')
-      // Bump the meeting's deal_status when finalizing so the dashboard's
-      // recent-meetings table reflects it without a separate Share step.
-      if (next === 'final') {
-        await fetch(`/api/meetings/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deal_status: 'proposal_sent' }),
-        }).catch(() => {})
-      }
-      toast.success(next === 'final' ? 'Proposal marked as final.' : 'Reopened as draft.')
-    } catch (err) {
-      // Revert the optimistic change.
-      setProposal((p) => (p ? { ...p, status: prev } : p))
-      toast.error(err instanceof Error ? err.message : 'Something went wrong')
-    } finally {
-      setStatusBusy(false)
-    }
-  }
-
-  async function printPDF() {
-    if (!proposal) return
-    // Open the window inside the click gesture so popup blockers don't kill it;
-    // navigate it once we have a slug to use.
-    const w = window.open('about:blank', '_blank')
-    if (!w) {
-      toast.error('Allow popups for PropMaker to export PDF.')
-      return
-    }
-    let slug = proposal.public_slug
-    if (!slug) {
-      try {
-        const res = await fetch(`/api/proposals/${proposal.id}/share`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ recipients: [], message: null }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Failed to prepare PDF')
-        slug = data.slug
-        setProposal((p) => (p ? { ...p, public_slug: slug } : p))
-      } catch (err) {
-        w.close()
-        toast.error(err instanceof Error ? err.message : 'Failed to prepare PDF')
-        return
-      }
-    }
-    w.location.href = `/p/${slug}?print=1`
-  }
-
-  async function exportPptx() {
-    if (!proposal || exporting) {
-      if (!proposal) toast.info('Generate the proposal first.')
-      return
-    }
-    setExporting(true)
-    try {
-      await downloadProposalPptx(proposal.id)
-    } finally {
-      setExporting(false)
-    }
-  }
-
-  if (!meeting) {
-    return <ProposalPageSkeleton />
-  }
-
-  const docTitle = meeting.client_company
-    ? `${meeting.client_company}`
-    : meeting.title
-
-  return (
-    <div className="flex h-screen lg-shell">
-      <OutlineSidebar
-        sections={sections}
-        activeId={activeSection}
-        onJump={jumpTo}
-        status={proposal?.status === 'final' ? 'Final · published' : 'Draft · auto-saved'}
-        savedAgo={savedAgo}
-      />
-
-      <div className="flex-1 min-w-0 flex flex-col">
-        <ProposalToolbar
-          meetingId={id}
-          title={docTitle}
-          proposal={proposal}
-          mode={mode}
-          onModeChange={setMode}
-          onPrint={printPDF}
-          onExportPptx={exportPptx}
-          exporting={exporting}
-          onRefine={() => {
-            if (!proposal) {
-              toast.info('Generate the proposal first, then refine.')
-              return
-            }
-            setRefineOpen(true)
-          }}
-          onToggleStatus={toggleStatus}
-          statusBusy={statusBusy}
-        />
-
-        <div className="flex-1 min-h-0 overflow-auto" style={{ padding: '32px 0' }}>
-          {(() => {
-            const css = brandStyleBlock(profile?.brand_colors)
-            return css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null
-          })()}
-          <div className="proposal-paper">
-            <ProposalEditor
-              meetingId={id}
-              initialJson={proposal?.content_json ?? null}
-              onSectionsChange={setSections}
-              readOnly={mode === 'preview'}
-            />
-            {(profile?.signature_name || email) && (
-              <SignatureBlock
-                signatureName={profile?.signature_name ?? profile?.full_name ?? ''}
-                signatureTitle={profile?.signature_title ?? ''}
-                email={email}
-                companyName={profile?.company_name}
-                logoUrl={profile?.logo_url ?? null}
-                status={proposal?.status ?? 'draft'}
-              />
-            )}
-          </div>
-        </div>
-      </div>
-
-      <RefineDrawer
-        open={refineOpen}
-        onClose={() => setRefineOpen(false)}
-        meetingId={id}
-        onApplied={fetchData}
-      />
-    </div>
-  )
-}
-
-function ProposalPageSkeleton() {
-  return (
-    <div className="flex h-screen lg-shell">
-      <div
-        className="shrink-0 hidden md:block"
-        style={{
-          width: 240,
-          padding: '24px 16px',
-          borderRight: '0.5px solid var(--line-1)',
-        }}
-        aria-hidden="true"
-      >
-        <Skeleton style={{ height: 12, width: 80, marginBottom: 16 }} />
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton
-            key={i}
-            style={{ height: 10, width: `${50 + ((i * 17) % 40)}%`, marginBottom: 12 }}
-          />
-        ))}
-      </div>
-      <div className="flex-1 min-w-0 flex flex-col">
-        <div
-          className="flex items-center gap-3"
-          style={{ padding: '12px 18px', borderBottom: '0.5px solid var(--line-1)' }}
-        >
-          <Skeleton style={{ height: 14, width: 180 }} />
-          <div className="flex-1" />
-          <Skeleton style={{ height: 28, width: 90, borderRadius: 7 }} />
-          <Skeleton style={{ height: 28, width: 90, borderRadius: 7 }} />
-        </div>
-        <div className="flex-1 min-h-0 overflow-hidden" style={{ padding: '32px 0' }}>
-          <div className="proposal-paper">
-            <Skeleton style={{ height: 24, width: '60%', marginBottom: 18 }} />
-            <Skeleton style={{ height: 14, width: '100%', marginBottom: 10 }} />
-            <Skeleton style={{ height: 14, width: '92%', marginBottom: 10 }} />
-            <Skeleton style={{ height: 14, width: '88%', marginBottom: 24 }} />
-            <Skeleton style={{ height: 18, width: '40%', marginBottom: 14 }} />
-            <Skeleton style={{ height: 14, width: '100%', marginBottom: 10 }} />
-            <Skeleton style={{ height: 14, width: '95%', marginBottom: 10 }} />
-            <Skeleton style={{ height: 14, width: '70%' }} />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+  redirect(doc ? `/meetings/${id}/documents/${doc.id}` : `/meetings/${id}/documents`)
 }

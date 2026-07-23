@@ -1,18 +1,18 @@
 ---
 name: pptx-proposal-deck
-description: Construye la versión PowerPoint (.pptx) de una propuesta de PropMaker. Toma la NARRATIVA que PropMaker ya generó (el ProposalBrief revisado y/o el documento de propuesta) y un template de marca del que se extrae la identidad visual (logo, paleta, fuente), y produce un deck con arco de propuesta B2B (portada, contexto y retos, necesidades citadas del cliente, quiénes somos, metodología, casos de uso, demo, seguridad e infraestructura, alcance, próximos pasos, cierre), motivo de iconos en círculos, tarjetas y estructura sándwich claro/oscuro. El deck se ADAPTA al contenido: el nº de slides no es fijo (un slide de detalle por cada prioridad/caso de uso, y las secciones opcionales se omiten si la narrativa no las sustenta) — típicamente ~14. Funciona para CUALQUIER proveedor y cualquier template 16:9. Úsalo SIEMPRE que se pida la versión "pptx / deck / presentación / pitch" de una propuesta y haya (a) la narrativa de la propuesta o el resumen de la reunión, y (b) un template de marca. El documento de propuesta de PropMaker NO se toca: este skill solo define cómo se hace el .pptx. Tiene DOS modos: (A) **REPLICAR el template exacto** — mismo fondo, estilo y títulos, reconstruido en pptxgenjs con medidas reales (`inspect_template.py` + `template-replication.md`), re-incrustando las imágenes reales del template; o (B) **diseño propio branded** (`build_deck.js`). Por defecto NO incluye números ni precios (el esquema comercial se cierra en fase técnica). Salida: un .pptx en el idioma de la propuesta, con la marca del template, verificado con QA visual y grep de tokens huérfanos.
+description: Construye la versión PowerPoint (.pptx) de una propuesta de PropMaker. Toma la NARRATIVA que PropMaker ya generó (el documento de propuesta, generado en un solo paso desde la reunión) y un template de marca del que se extrae la identidad visual (logo, paleta, fuente), y produce un deck con arco de propuesta B2B (portada, contexto y retos, necesidades citadas del cliente, quiénes somos, metodología, casos de uso, demo, seguridad e infraestructura, alcance, próximos pasos, cierre), motivo de iconos en círculos, tarjetas y estructura sándwich claro/oscuro. El deck se ADAPTA al contenido: el nº de slides no es fijo (un slide de detalle por cada prioridad/caso de uso, y las secciones opcionales se omiten si la narrativa no las sustenta) — típicamente ~14. Funciona para CUALQUIER proveedor y cualquier template 16:9. Úsalo SIEMPRE que se pida la versión "pptx / deck / presentación / pitch" de una propuesta y haya (a) la narrativa de la propuesta o el resumen de la reunión, y (b) un template de marca. El documento de propuesta de PropMaker NO se toca: este skill solo define cómo se hace el .pptx. Tiene DOS modos: (A) **REPLICAR el template exacto** — mismo fondo, estilo y títulos, reconstruido en pptxgenjs con medidas reales (`inspect_template.py` + `template-replication.md`), re-incrustando las imágenes reales del template; o (B) **diseño propio branded** (`build_deck.js`). Por defecto NO incluye números ni precios (el esquema comercial se cierra en fase técnica). Salida: un .pptx en el idioma de la propuesta, con la marca del template, verificado con QA visual y grep de tokens huérfanos.
 ---
 
 # Deck de propuesta branded (PPTX) desde la narrativa de PropMaker
 
-Convierte la **narrativa de la propuesta de PropMaker** (el `ProposalBrief` revisado y/o el documento) + un **template de marca** en una **propuesta `.pptx`**. La identidad (logo, colores, fuente) se **extrae del template**, así que sirve para cualquier proveedor. La salida va en el idioma de la propuesta, sin números ni precios por defecto. **El nº de slides se adapta al contenido** (un slide por caso de uso; secciones opcionales omitibles) — típicamente ~14.
+Convierte la **narrativa de la propuesta de PropMaker** (el documento de propuesta) + un **template de marca** en una **propuesta `.pptx`**. La identidad (logo, colores, fuente) se **extrae del template**, así que sirve para cualquier proveedor. La salida va en el idioma de la propuesta, sin números ni precios por defecto. **El nº de slides se adapta al contenido** (un slide por caso de uso; secciones opcionales omitibles) — típicamente ~14.
 
 > **El documento de propuesta de PropMaker se queda como está.** Este skill solo determina **cómo se construye la versión `.pptx`**, alimentándola con esa misma narrativa (deck y documento cuentan la misma historia).
 
 ## Cuándo usar este skill
 
 Actívalo cuando el usuario:
-- Pide la versión **pptx / deck / presentación / pitch** de una propuesta y aporta (a) la narrativa (el `ProposalBrief` o el documento de propuesta de PropMaker, o el resumen de la reunión) **y** (b) un template de presentación de marca.
+- Pide la versión **pptx / deck / presentación / pitch** de una propuesta y aporta (a) la narrativa (el documento de propuesta de PropMaker, o el resumen de la reunión) **y** (b) un template de presentación de marca.
 - Pide "convertir esta propuesta/reunión en una presentación con base en el template".
 - Pide adaptar o regenerar un deck previo hecho con este flujo.
 
@@ -40,7 +40,7 @@ El resto de este documento describe el **Modo B**. Para el **Modo A** ve directo
 Un `.pptx` 16:9 wide con la marca del template (nº de slides según el contenido, típicamente ~14):
 - Portada y cierre sobre fondo oscuro (color primario) con el logo del proveedor.
 - Las **necesidades del cliente citadas textualmente** (ancla del alcance), cada una mapeada a una solución.
-- **Un slide detallado por prioridad / caso de uso** (siguen a `ProposalBrief.priorities`; N variable).
+- **Un slide detallado por prioridad / caso de uso** (siguen a los bullets de *Priorities & Key Deliverables* del documento; N variable).
 - Metodología, seguridad/infraestructura/gobierno, alcance y próximos pasos — **secciones omitibles** si la narrativa no las sustenta.
 - Sin tarifas por defecto.
 
@@ -62,7 +62,7 @@ bash scripts/setup.sh   # npm: pptxgenjs sharp react react-dom react-icons · pi
    ```
 
 **B. Leer la narrativa de la propuesta** (ver `references/propmaker-narrative-map.md`)
-5. Fuente primaria: el **`ProposalBrief`** (`overview`, `clientGoals`, `priorities`, `scope`, `outOfScope`, `recommendedProducts`, `budgetNotes`, `timelineNotes`, `openQuestions`). Complementa con el **documento** de propuesta (6 secciones) y los metadatos de reunión (cliente, próximo hito). Las **prioridades** son la espina del deck (definen cuántos casos de uso).
+5. Fuente primaria: el **documento de propuesta** (6 secciones: Executive Summary, Priorities & Key Deliverables, Scope of Work, Timeline & Milestones, Recommended Line Items, Budget & Pricing). Complementa con los metadatos de reunión (cliente, contexto, próximo hito). Los bullets de **Priorities & Key Deliverables** son la espina del deck (definen cuántos casos de uso).
 6. Confirma solo lo crítico que falte: nombre exacto del cliente/área, número de casos, mes/año de la propuesta y fecha del próximo hito. No inventes tarifas ni datos; lo que falte va como "Por confirmar" o se omite.
 
 **C. Construir el deck**
@@ -125,7 +125,7 @@ pptx-proposal-deck/
 │   ├── brand-extraction.md          cómo sacar paleta/fuente/logo de cualquier template → BRAND
 │   ├── design-system.md             reglas de diseño por rol (agnósticas de marca)
 │   ├── slide-catalog.md             los ~14 slides y el patrón de cada uno (modo B)
-│   ├── propmaker-narrative-map.md   mapa: ProposalBrief / documento de PropMaker → los slides
+│   ├── propmaker-narrative-map.md   mapa: documento de PropMaker → los slides
 │   ├── template-replication.md      MODO A: medir y reconstruir el template exacto
 │   └── build-guide.md               helpers, layouts, trampas de QA, iconos, comandos
 ├── scripts/
@@ -147,4 +147,4 @@ pptx-proposal-deck/
 ## Ejemplo de disparo
 
 **Input:** "Aquí está la propuesta de PropMaker para [cliente] (o su brief) y mi template de marca. Genérame el deck."
-**Acción:** `setup.sh` → extraer marca del template → mapear la narrativa (ProposalBrief/documento) a los ~14 slides vía `propmaker-narrative-map.md` → editar `BRAND` + `CONTENT` en `build_deck.js` → generar → QA visual + grep de tokens → entregar `.pptx` + pendientes por confirmar.
+**Acción:** `setup.sh` → extraer marca del template → mapear la narrativa (el documento de propuesta) a los ~14 slides vía `propmaker-narrative-map.md` → editar `BRAND` + `CONTENT` en `build_deck.js` → generar → QA visual + grep de tokens → entregar `.pptx` + pendientes por confirmar.

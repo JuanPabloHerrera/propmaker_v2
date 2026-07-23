@@ -19,7 +19,7 @@ export async function POST(
   const svc = createServiceClient()
 
   const { data: proposal } = await svc
-    .from('proposals')
+    .from('meeting_documents')
     .select('id, first_opened_at, open_count')
     .eq('public_slug', slug)
     .maybeSingle()
@@ -37,6 +37,6 @@ export async function POST(
     update.first_opened_at = new Date().toISOString()
   }
 
-  await svc.from('proposals').update(update).eq('id', proposal.id)
+  await svc.from('meeting_documents').update(update).eq('id', proposal.id)
   return new NextResponse(null, { status: 204 })
 }

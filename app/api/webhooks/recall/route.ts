@@ -1,6 +1,7 @@
 import { createServiceClient } from '@/lib/supabase/server'
 import { NextResponse, after } from 'next/server'
 import { generateSuggestions } from '@/lib/claude'
+import { runMeetingExtraction } from '@/lib/extract-meeting'
 import { getTranscriptById } from '@/lib/recall'
 import type { MeetingType, TranscriptSegment } from '@/types'
 
@@ -151,6 +152,10 @@ export async function POST(request: Request) {
       .from('meetings')
       .update({ status: 'completed', live_partial: null, recall_transcript_ready: true })
       .eq('id', meetingId)
+
+    // The authoritative transcript just landed — extract title/client/attendees/
+    // context/language off the response path (idempotent across trigger paths).
+    after(() => runMeetingExtraction(supabase, meetingId))
   }
 
   // --- Bot status events ---

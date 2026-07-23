@@ -39,6 +39,9 @@ export interface RecallBot {
   id: string
   status_changes: Array<{ code: string; created_at: string }>
   meeting_url: string
+  // Platform-dependent and often absent — treat any title here as best-effort;
+  // transcript extraction is the primary source for meeting titles.
+  meeting_metadata?: { title?: string | null } | null
   recordings?: Array<{
     id: string
     status: { code: string }

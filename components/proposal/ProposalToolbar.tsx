@@ -4,20 +4,21 @@ import * as React from 'react'
 import Link from 'next/link'
 import { Icon } from '@/components/ui/icon'
 import { Segmented } from '@/components/ui/segmented'
-import type { Proposal } from '@/types'
+import { DOC_TYPE_LABELS, type MeetingDocument } from '@/types'
 
 type EditMode = 'edit' | 'preview'
 
 interface Props {
   meetingId: string
   title: string
-  proposal: Proposal | null
+  proposal: MeetingDocument | null
   mode: EditMode
   onModeChange: (m: EditMode) => void
   onPrint: () => void
   onExportPptx: () => void
   exporting?: boolean
   onRefine?: () => void
+  onViewTranscript?: () => void
   onToggleStatus: () => void
   statusBusy?: boolean
 }
@@ -32,10 +33,12 @@ export function ProposalToolbar({
   onExportPptx,
   exporting,
   onRefine,
+  onViewTranscript,
   onToggleStatus,
   statusBusy,
 }: Props) {
   const isFinal = proposal?.status === 'final'
+  const typeLabel = proposal ? DOC_TYPE_LABELS[proposal.doc_type] : 'Document'
   return (
     <div
       className="flex items-center gap-2.5 shrink-0 pm-no-print"
@@ -53,10 +56,10 @@ export function ProposalToolbar({
           className="truncate"
           style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1)' }}
         >
-          {title} · Proposal
+          {title} · {typeLabel}
         </div>
         <div className="mono-num" style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>
-          {proposal ? `PROP-${proposal.id.slice(0, 8).toUpperCase()}` : 'No proposal yet'}
+          {proposal ? `DOC-${proposal.id.slice(0, 8).toUpperCase()}` : 'No document yet'}
           {proposal && ` · ${proposal.status === 'final' ? 'FINAL' : 'DRAFT'}`}
         </div>
       </div>
@@ -71,6 +74,26 @@ export function ProposalToolbar({
         value={mode}
         onChange={onModeChange}
       />
+
+      {onViewTranscript && (
+        <button
+          type="button"
+          onClick={onViewTranscript}
+          className="inline-flex items-center gap-1.5 font-medium"
+          style={{
+            height: 24,
+            padding: '0 9px',
+            borderRadius: 6,
+            fontSize: 11.5,
+            color: 'var(--ink-1)',
+            background: 'rgba(255,255,255,0.6)',
+            border: '0.5px solid rgba(28,24,20,0.10)',
+          }}
+        >
+          <Icon name="doc" size={12} />
+          Transcript
+        </button>
+      )}
 
       {onRefine && (
         <button
@@ -161,7 +184,7 @@ export function ProposalToolbar({
       )}
 
       <Link
-        href={`/meetings/${meetingId}/proposal/share`}
+        href={proposal ? `/meetings/${meetingId}/documents/${proposal.id}/share` : `/meetings/${meetingId}/documents`}
         className="inline-flex items-center gap-1.5 font-medium text-white"
         style={{
           height: 24,

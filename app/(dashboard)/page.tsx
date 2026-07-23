@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { GreetingHeader } from '@/components/dashboard/GreetingHeader'
-import { UpNextCard } from '@/components/dashboard/UpNextCard'
 import { StatTile } from '@/components/dashboard/StatTile'
 import { RecentMeetingsTable } from '@/components/dashboard/RecentMeetingsTable'
 import type { Meeting } from '@/types'
@@ -59,17 +58,6 @@ export default async function DashboardPage({
     ? Math.max(1, Math.ceil((meetingsCount ?? 0) / MEETINGS_PAGE_SIZE))
     : 1
 
-  // Up Next — first upcoming scheduled meeting
-  const { data: nextData } = await supabase
-    .from('meetings')
-    .select('*')
-    .eq('user_id', user.id)
-    .not('scheduled_at', 'is', null)
-    .gte('scheduled_at', new Date().toISOString())
-    .order('scheduled_at', { ascending: true })
-    .limit(1)
-  const upNext = (nextData?.[0] as Meeting | undefined) ?? null
-
   // Stats — this-month meetings, proposals out, close rate (last 30d)
   const monthStart = new Date()
   monthStart.setDate(1)
@@ -108,8 +96,6 @@ export default async function DashboardPage({
   return (
     <div className="pm-page" style={{ padding: '28px 36px 32px' }}>
       <GreetingHeader firstName={firstName} />
-
-      {upNext && filter === 'all' && <UpNextCard meeting={upNext} />}
 
       {filter === 'all' && (
         <div className="grid grid-cols-3 gap-3 mb-[22px]">

@@ -20,9 +20,10 @@ export async function POST(request: Request) {
   }
 
   const { data: proposal } = await supabase
-    .from('proposals')
+    .from('meeting_documents')
     .select('id, content_json')
     .eq('id', proposalId)
+    .eq('doc_type', 'proposal')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
       user_id: user.id,
       title,
       summary,
+      full_text: text,
       source: 'app_proposal',
       source_proposal_id: proposalId,
     })
