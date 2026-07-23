@@ -60,21 +60,13 @@ export async function GET(
   const format = (job.format as string | null) ?? 'pptx'
   const filename = job.filename || `document.${format}`
 
-  // Tell the client which builder produced the file. `fast` means the Claude
-  // build was unavailable and we served the lite pptxgenjs fallback — the client
-  // surfaces that instead of a plain success.
-  const headers: Record<string, string> = {
-    'Content-Type': FORMAT_MIME[format] ?? 'application/octet-stream',
-    'Content-Disposition': `attachment; filename="${filename}"`,
-    'Content-Length': String(buf.length),
-    'Cache-Control': 'no-store',
-    'X-Deck-Engine': job.engine === 'fast' ? 'fast' : 'skill',
-  }
-  if (job.engine === 'fast' && job.error) {
-    // Header values must be printable ASCII on one line — strip the rest.
-    const note = job.error.replace(/[^\x20-\x7e]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
-    if (note) headers['X-Deck-Note'] = note
-  }
-
-  return new NextResponse(new Uint8Array(buf), { status: 200, headers })
+  return new NextResponse(new Uint8Array(buf), {
+    status: 200,
+    headers: {
+      'Content-Type': FORMAT_MIME[format] ?? 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': String(buf.length),
+      'Cache-Control': 'no-store',
+    },
+  })
 }

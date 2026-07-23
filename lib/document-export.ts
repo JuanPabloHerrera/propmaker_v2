@@ -2,8 +2,6 @@ import { toFile } from '@anthropic-ai/sdk'
 import { anthropic } from '@/lib/claude'
 import { createServiceClient } from '@/lib/supabase/server'
 import { tiptapToMarkdown, tiptapToSections } from '@/lib/tiptap'
-import { buildProposalPptx } from '@/lib/pptx'
-import { extractPptxTheme } from '@/lib/pptx-theme'
 import { DOC_TYPE_LABELS, type Meeting, type MeetingDocument, type UserProfile } from '@/types'
 
 // ---------------------------------------------------------------------------
@@ -15,9 +13,8 @@ import { DOC_TYPE_LABELS, type Meeting, type MeetingDocument, type UserProfile }
 // three document types (minute / summary / proposal) and all three formats.
 // Invoked from the export route's background job (`after()`), never inline.
 //
-// Fallback: pptx falls back to the instant pptxgenjs deck (lib/pptx.ts) so the
-// user always gets a deck. docx/pdf have no fast engine — the job fails
-// cleanly and the client offers the print route for PDF.
+// There is deliberately NO fallback engine: if the Claude build fails, the job
+// is marked failed and the user is told to try again — never a degraded file.
 // ---------------------------------------------------------------------------
 
 export type ExportFormat = 'pptx' | 'docx' | 'pdf'
@@ -124,48 +121,8 @@ export async function runDocumentExport(jobId: string): Promise<void> {
       meeting: m,
       profile: p,
     })
-    await storeAndFinish(svc, jobId, job.user_id, bytes, filename, format, 'skill')
+    await storeAndFinish(svc, jobId, job.user_id, bytes, filename, format)
   } catch (skillErr) {
-    if (format === 'pptx') {
-      // Fast fallback so the user still gets a deck.
-      try {
-        const preparedOn = new Date().toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        })
-        const theme = templateBytes ? await extractPptxTheme(templateBytes) : null
-        const buf = await buildProposalPptx({
-          proposal: doc ?? { content_json: null },
-          meeting: m,
-          profile: p,
-          preparedOn,
-          template: theme,
-        })
-        await storeAndFinish(
-          svc,
-          jobId,
-          job.user_id,
-          buf,
-          filename,
-          format,
-          'fast',
-          `skill build unavailable — used fast export (${errText(skillErr)})`,
-        )
-        return
-      } catch (fallbackErr) {
-        await svc
-          .from('deck_exports')
-          .update({
-            status: 'failed',
-            error: `${errText(skillErr)} · fallback: ${errText(fallbackErr)}`,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', jobId)
-        return
-      }
-    }
-    // docx/pdf: no fast engine — fail cleanly (the client offers print for PDF).
     await svc
       .from('deck_exports')
       .update({
@@ -278,8 +235,6 @@ async function storeAndFinish(
   bytes: Buffer,
   filename: string,
   format: ExportFormat,
-  engine: 'skill' | 'fast',
-  note?: string,
 ): Promise<void> {
   const path = `${userId}/${jobId}.${format}`
   const { error: upErr } = await svc.storage
@@ -300,10 +255,10 @@ async function storeAndFinish(
     .from('deck_exports')
     .update({
       status: 'succeeded',
-      engine,
+      engine: 'skill',
       file_path: path,
       filename,
-      error: note ?? null,
+      error: null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', jobId)

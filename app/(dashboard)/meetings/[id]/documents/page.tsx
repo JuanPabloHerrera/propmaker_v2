@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Icon } from '@/components/ui/icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ClientMetaCard } from '@/components/documents/ClientMetaCard'
+import { AgentWorkingOverlay } from '@/components/documents/AgentWorkingOverlay'
 import { DOC_TYPE_LABELS, type DocType, type Meeting, type MeetingDocument } from '@/types'
 
 type DocRow = Pick<
@@ -65,7 +66,6 @@ export default function DocumentsHubPage() {
   async function generate(type: DocType) {
     if (generating) return
     setGenerating(type)
-    toast.info(`Generating your ${DOC_TYPE_LABELS[type].toLowerCase()}…`)
     try {
       const res = await fetch(`/api/meetings/${id}/documents`, {
         method: 'POST',
@@ -96,6 +96,12 @@ export default function DocumentsHubPage() {
 
   return (
     <div className="pm-page" style={{ padding: '28px 36px 32px' }}>
+      <AgentWorkingOverlay
+        open={generating !== null}
+        title={`Generating your ${generating ? DOC_TYPE_LABELS[generating].toLowerCase() : 'document'}…`}
+        subtitle="The AI agent is reading the meeting and writing the document — it will open automatically when it's ready."
+      />
+
       <Link
         href="/"
         className="inline-flex items-center gap-1 mb-3"

@@ -3,21 +3,12 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { Icon } from '@/components/ui/icon'
-import { Segmented } from '@/components/ui/segmented'
 import { DOC_TYPE_LABELS, type MeetingDocument } from '@/types'
-
-type EditMode = 'edit' | 'preview'
 
 interface Props {
   meetingId: string
   title: string
   proposal: MeetingDocument | null
-  mode: EditMode
-  onModeChange: (m: EditMode) => void
-  onPrint: () => void
-  onExportPptx: () => void
-  exporting?: boolean
-  onRefine?: () => void
   onViewTranscript?: () => void
   onToggleStatus: () => void
   statusBusy?: boolean
@@ -27,12 +18,6 @@ export function ProposalToolbar({
   meetingId,
   title,
   proposal,
-  mode,
-  onModeChange,
-  onPrint,
-  onExportPptx,
-  exporting,
-  onRefine,
   onViewTranscript,
   onToggleStatus,
   statusBusy,
@@ -66,15 +51,6 @@ export function ProposalToolbar({
 
       <div className="flex-1" />
 
-      <Segmented<EditMode>
-        items={[
-          { value: 'edit', label: 'Edit' },
-          { value: 'preview', label: 'Preview' },
-        ]}
-        value={mode}
-        onChange={onModeChange}
-      />
-
       {onViewTranscript && (
         <button
           type="button"
@@ -94,64 +70,6 @@ export function ProposalToolbar({
           Transcript
         </button>
       )}
-
-      {onRefine && (
-        <button
-          type="button"
-          onClick={onRefine}
-          className="inline-flex items-center gap-1.5 font-medium"
-          style={{
-            height: 24,
-            padding: '0 9px',
-            borderRadius: 6,
-            fontSize: 11.5,
-            color: 'var(--ink-1)',
-            background: 'rgba(255,255,255,0.6)',
-            border: '0.5px solid rgba(28,24,20,0.10)',
-          }}
-        >
-          <Icon name="sparkle" size={12} />
-          Refine
-        </button>
-      )}
-
-      <button
-        type="button"
-        onClick={onPrint}
-        className="inline-flex items-center gap-1.5 font-medium"
-        style={{
-          height: 24,
-          padding: '0 9px',
-          borderRadius: 6,
-          fontSize: 11.5,
-          color: 'var(--ink-1)',
-          background: 'rgba(255,255,255,0.6)',
-          border: '0.5px solid rgba(28,24,20,0.10)',
-        }}
-      >
-        <Icon name="download" size={12} />
-        PDF
-      </button>
-
-      <button
-        type="button"
-        onClick={onExportPptx}
-        disabled={exporting}
-        className="inline-flex items-center gap-1.5 font-medium"
-        style={{
-          height: 24,
-          padding: '0 9px',
-          borderRadius: 6,
-          fontSize: 11.5,
-          color: 'var(--ink-1)',
-          background: 'rgba(255,255,255,0.6)',
-          border: '0.5px solid rgba(28,24,20,0.10)',
-          opacity: exporting ? 0.5 : 1,
-        }}
-      >
-        <Icon name="box" size={12} />
-        {exporting ? 'Exporting…' : 'PPTX'}
-      </button>
 
       {proposal && (
         <button
@@ -196,8 +114,8 @@ export function ProposalToolbar({
           border: '0.5px solid rgba(77,138,107,0.6)',
         }}
       >
-        <Icon name="share" size={12} />
-        Share
+        <Icon name="download" size={12} />
+        Export
       </Link>
     </div>
   )

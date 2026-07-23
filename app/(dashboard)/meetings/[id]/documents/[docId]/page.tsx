@@ -8,11 +8,10 @@ import { OutlineSidebar, type OutlineSection } from '@/components/proposal/Outli
 import { ProposalToolbar } from '@/components/proposal/ProposalToolbar'
 import { ProposalEditor } from '@/components/proposal/ProposalEditor'
 import { SignatureBlock } from '@/components/proposal/SignatureBlock'
-import { RefineDrawer } from '@/components/proposal/RefineDrawer'
 import { TranscriptDrawer } from '@/components/proposal/TranscriptDrawer'
+import { FloatingRefineChat } from '@/components/documents/FloatingRefineChat'
 import { Skeleton } from '@/components/ui/skeleton'
 import { brandStyleBlock } from '@/lib/brand'
-import { startBrandedDeckBuild } from '@/lib/download-pptx'
 import type { Meeting, MeetingDocument, UserProfile } from '@/types'
 
 export default function DocumentPage() {
@@ -25,15 +24,9 @@ export default function DocumentPage() {
   const [email, setEmail] = React.useState<string>('')
   const [sections, setSections] = React.useState<OutlineSection[]>([])
   const [activeSection, setActiveSection] = React.useState<string | null>(null)
-  const [mode, setMode] = React.useState<'edit' | 'preview'>('edit')
   const [savedAgo, setSavedAgo] = React.useState<string>('just now')
   const [statusBusy, setStatusBusy] = React.useState(false)
-  const [refineOpen, setRefineOpen] = React.useState(false)
   const [transcriptOpen, setTranscriptOpen] = React.useState(false)
-  const [exporting, setExporting] = React.useState(false)
-  const exportCtrlRef = React.useRef<AbortController | null>(null)
-
-  React.useEffect(() => () => exportCtrlRef.current?.abort(), [])
 
   const fetchData = React.useCallback(async () => {
     // Get the user first so the profile query can filter by user_id — the
@@ -114,73 +107,6 @@ export default function DocumentPage() {
     }
   }
 
-  async function printPDF() {
-    if (!doc) return
-    // Open the window inside the click gesture so popup blockers don't kill it;
-    // navigate it once we have a slug to use.
-    const w = window.open('about:blank', '_blank')
-    if (!w) {
-      toast.error('Allow popups for PropMaker to export PDF.')
-      return
-    }
-    let slug = doc.public_slug
-    if (!slug) {
-      try {
-        const res = await fetch(`/api/documents/${doc.id}/share`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ recipients: [], message: null }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Failed to prepare PDF')
-        slug = data.slug
-        setDoc((p) => (p ? { ...p, public_slug: slug } : p))
-      } catch (err) {
-        w.close()
-        toast.error(err instanceof Error ? err.message : 'Failed to prepare PDF')
-        return
-      }
-    }
-    w.location.href = `/p/${slug}?print=1`
-  }
-
-  async function exportPptx() {
-    if (!doc || exporting) {
-      if (!doc) toast.info('Generate the document first.')
-      return
-    }
-    // Claude builds the deck (a couple-minute background job). This screen has no
-    // template picker, so Claude designs an own branded deck from the user's
-    // brand (Mode B). Pick a template on the Share screen for template reproduction.
-    setExporting(true)
-    const ctrl = new AbortController()
-    exportCtrlRef.current = ctrl
-    toast.info(
-      'Building your branded deck — this takes a couple of minutes. The download starts automatically when it’s ready.',
-    )
-    try {
-      const { engine, note } = await startBrandedDeckBuild(doc.id, null, {
-        signal: ctrl.signal,
-      })
-      if (engine === 'fast') {
-        toast.warning(
-          note
-            ? `Delivered a lite deck — the Claude build was unavailable: ${note}`
-            : 'Delivered a lite deck — the Claude build was unavailable.',
-        )
-      } else {
-        toast.success('Your branded deck is ready.')
-      }
-    } catch (e) {
-      if (!(e instanceof DOMException && e.name === 'AbortError')) {
-        toast.error(e instanceof Error ? e.message : 'Export failed')
-      }
-    } finally {
-      setExporting(false)
-      exportCtrlRef.current = null
-    }
-  }
-
   if (!meeting || !doc) {
     return <DocumentPageSkeleton />
   }
@@ -202,12 +128,6 @@ export default function DocumentPage() {
           meetingId={id}
           title={docTitle}
           proposal={doc}
-          mode={mode}
-          onModeChange={setMode}
-          onPrint={printPDF}
-          onExportPptx={exportPptx}
-          exporting={exporting}
-          onRefine={() => setRefineOpen(true)}
           onViewTranscript={() => setTranscriptOpen(true)}
           onToggleStatus={toggleStatus}
           statusBusy={statusBusy}
@@ -223,7 +143,6 @@ export default function DocumentPage() {
               documentId={docId}
               initialJson={doc.content_json ?? null}
               onSectionsChange={setSections}
-              readOnly={mode === 'preview'}
             />
             {doc.doc_type === 'proposal' && (profile?.signature_name || email) && (
               <SignatureBlock
@@ -239,12 +158,7 @@ export default function DocumentPage() {
         </div>
       </div>
 
-      <RefineDrawer
-        open={refineOpen}
-        onClose={() => setRefineOpen(false)}
-        documentId={docId}
-        onApplied={fetchData}
-      />
+      <FloatingRefineChat documentId={docId} onApplied={fetchData} />
 
       <TranscriptDrawer
         open={transcriptOpen}
