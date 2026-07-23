@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Icon } from '@/components/ui/icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ClientMetaCard } from '@/components/documents/ClientMetaCard'
+import { NotesPad } from '@/components/meeting/NotesPad'
 import { AgentWorkingOverlay } from '@/components/documents/AgentWorkingOverlay'
 import { DOC_TYPE_LABELS, type DocType, type Meeting, type MeetingDocument } from '@/types'
 
@@ -17,7 +18,7 @@ type DocRow = Pick<
   'id' | 'doc_type' | 'title' | 'language' | 'status' | 'public_slug' | 'created_at' | 'updated_at'
 >
 
-const GENERATORS: Array<{ type: DocType; icon: 'list' | 'doc' | 'pen'; blurb: string }> = [
+const GENERATORS: Array<{ type: DocType; icon: 'list' | 'doc' | 'pen' | 'sparkle'; blurb: string }> = [
   {
     type: 'minute',
     icon: 'list',
@@ -32,6 +33,11 @@ const GENERATORS: Array<{ type: DocType; icon: 'list' | 'doc' | 'pen'; blurb: st
     type: 'proposal',
     icon: 'pen',
     blurb: 'A full proposal priced from your catalog, structured like your most similar past proposal.',
+  },
+  {
+    type: 'notes',
+    icon: 'sparkle',
+    blurb: 'Your own notes, cleaned up and structured into a shareable document — nothing from the transcript.',
   },
 ]
 
@@ -85,8 +91,8 @@ export default function DocumentsHubPage() {
     return (
       <div className="pm-page lg-shell" style={{ padding: '28px 36px 32px' }}>
         <Skeleton style={{ height: 28, width: 280, marginBottom: 22 }} />
-        <div className="grid grid-cols-3 gap-4">
-          {Array.from({ length: 3 }).map((_, i) => (
+        <div className="grid grid-cols-2 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} style={{ height: 160, width: '100%', borderRadius: 14 }} />
           ))}
         </div>
@@ -122,7 +128,7 @@ export default function DocumentsHubPage() {
 
       <div className="grid gap-4" style={{ gridTemplateColumns: '2fr 1fr' }}>
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             {GENERATORS.map((g) => (
               <button
                 key={g.type}
@@ -191,7 +197,21 @@ export default function DocumentsHubPage() {
           </div>
         </div>
 
-        <ClientMetaCard meeting={meeting} onSaved={fetchData} />
+        <div className="flex flex-col gap-4">
+          <ClientMetaCard meeting={meeting} onSaved={fetchData} />
+
+          <div className="card overflow-hidden flex flex-col" style={{ height: 360 }}>
+            <div
+              className="text-[13px] font-semibold shrink-0"
+              style={{ padding: '12px 18px', borderBottom: '0.5px solid var(--line-1)', color: 'var(--ink-1)' }}
+            >
+              Meeting notes
+            </div>
+            <div className="flex-1 min-h-0">
+              <NotesPad meetingId={id} initialJson={meeting.notes_json} variant="card" />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

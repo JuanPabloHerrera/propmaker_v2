@@ -486,6 +486,53 @@ export async function generateTranscriptSummary({
   return msg.content[0]?.type === 'text' ? msg.content[0].text : ''
 }
 
+interface NotesDocumentInput {
+  notesText: string
+  attendees: MeetingAttendee[]
+  clientCompany: string | null
+  language: string | null
+}
+
+const NOTES_DOC_INSTRUCTIONS = `You turn a consultant's raw in-meeting notes into a clean, shareable NOTES DOCUMENT.
+
+Your ONLY source is the consultant's own notes. There is no transcript here and you must not invent one: never add facts, numbers, names, decisions, or commitments that are not in the notes. This document is the consultant's voice, tidied — not a meeting reconstruction.
+
+Your job:
+- Preserve every point the consultant wrote — nothing gets dropped, however terse.
+- Fix typos, expand obvious shorthand into full sentences, and normalize punctuation, without changing meaning.
+- Organize: group related points under ## headings that mirror the notes' own structure and topics (keep the consultant's headings when they wrote any). Use bullets for enumerations, short paragraphs for prose.
+- Keep it lean: no summaries of the notes, no commentary, no boilerplate sections.
+
+Output: Markdown only — no preamble and no top-level title (the app supplies the document title).`
+
+export async function generateNotesDocument({
+  notesText,
+  attendees,
+  clientCompany,
+  language,
+}: NotesDocumentInput): Promise<string> {
+  const attendeeLine = attendees.length
+    ? attendees.map((a) => (a.email ? `${a.name} <${a.email}>` : a.name)).join(', ')
+    : '(none recorded)'
+
+  const userContent = [
+    languageDirective(language),
+    `## MEETING CONTEXT (for orientation only — do not add facts from it)\nClient — ${clientCompany || '(unknown)'}\nKnown attendees — ${attendeeLine}`,
+    `## CONSULTANT NOTES (the only source)\n${notesText}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+
+  const msg = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 3072,
+    system: [{ type: 'text', text: NOTES_DOC_INSTRUCTIONS, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: userContent }],
+  })
+
+  return msg.content[0]?.type === 'text' ? msg.content[0].text : ''
+}
+
 export interface MatchedReferenceInput {
   title: string
   summary: string
@@ -639,12 +686,15 @@ const DOC_TYPE_NOUNS: Record<DocType, string> = {
   minute: 'meeting minutes document',
   summary: 'meeting transcript summary',
   proposal: 'project proposal',
+  notes: 'meeting notes document (polished from the consultant\'s own notes)',
 }
 
 const DOC_TYPE_SECTIONS: Record<DocType, string> = {
   minute:
     '## Attendees, ## Topics Discussed, ## Decisions, ## Action Items, ## Open Questions',
   summary: '## Overview, ## Key Points, ## Next Steps',
+  notes:
+    'free-form ## headings that mirror the structure and topics of the consultant\'s own notes',
   proposal:
     '## Executive Summary, ## Priorities & Key Deliverables, ## Scope of Work, ## Timeline & Milestones, ## Recommended Line Items, ## Budget & Pricing',
 }

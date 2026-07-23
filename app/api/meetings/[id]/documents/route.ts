@@ -4,6 +4,7 @@ import {
   generateMeetingMinute,
   generateTranscriptSummary,
   generateProposal,
+  generateNotesDocument,
   matchReferenceProposal,
 } from '@/lib/claude'
 import { markdownToTiptap } from '@/lib/markdown'
@@ -12,7 +13,7 @@ import type { DocType } from '@/types'
 
 export const maxDuration = 300
 
-const DOC_TYPES: DocType[] = ['minute', 'summary', 'proposal']
+const DOC_TYPES: DocType[] = ['minute', 'summary', 'proposal', 'notes']
 
 /** List every document generated for this meeting (newest first). */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -47,7 +48,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const body = await request.json().catch(() => ({}))
   const type = body?.type as DocType
   if (!DOC_TYPES.includes(type)) {
-    return NextResponse.json({ error: 'type must be minute, summary, or proposal' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'type must be minute, summary, proposal, or notes' },
+      { status: 400 },
+    )
   }
 
   const inputs = await gatherMeetingInputs(supabase, id, user.id)
@@ -85,6 +89,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         browserTranscript: inputs.browserTranscript,
         recallTranscript: inputs.recallTranscript,
         notesText: inputs.notesText,
+        language: inputs.language,
+      })
+    } else if (type === 'notes') {
+      // Notes document: polished from ONLY the consultant's own notes.
+      if (!inputs.notesText) {
+        return NextResponse.json(
+          { error: 'This meeting has no notes yet — take some notes first.' },
+          { status: 422 },
+        )
+      }
+      markdown = await generateNotesDocument({
+        notesText: inputs.notesText,
+        attendees: inputs.attendees,
+        clientCompany: inputs.clientCompany,
         language: inputs.language,
       })
     } else {

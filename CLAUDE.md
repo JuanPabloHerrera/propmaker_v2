@@ -1,6 +1,6 @@
 # PropMaker
 
-Mac-app-style AI meeting intelligence + document generator. The user joins a meeting instantly (local mic via Deepgram streaming, or an online meeting the Recall.ai bot joins from a pasted link), sees a live transcript + notes pad + AI co-pilot during the call, and afterwards lands on a per-meeting **documents hub** where they generate any of three editable documents — **meeting minute, transcript summary, or proposal** — as many as they want, any time. Meeting title, client, attendees, context, and language are auto-extracted from the transcript (no pre-meeting form, no post-meeting Q&A, no brief review). Apple Liquid Glass aesthetic, sage-green accent, warm off-white canvas.
+Mac-app-style AI meeting intelligence + document generator. The user joins a meeting instantly (local mic via Deepgram streaming, or an online meeting the Recall.ai bot joins from a pasted link), sees a live transcript + notes pad + AI co-pilot during the call, and afterwards lands on a per-meeting **documents hub** where they generate any of four editable documents — **meeting minute, transcript summary, proposal, or notes document (AI-polished from only the user's notes)** — as many as they want, any time. Notes stay editable on the hub after the meeting and feed every generator as authoritative context. Meeting title, client, attendees, context, and language are auto-extracted from the transcript (no pre-meeting form, no post-meeting Q&A, no brief review). Apple Liquid Glass aesthetic, sage-green accent, warm off-white canvas.
 
 ## Stack
 - Next.js 16 (App Router) + TypeScript + React 19
@@ -10,12 +10,12 @@ Mac-app-style AI meeting intelligence + document generator. The user joins a mee
 - Deepgram streaming WebSocket — browser-side audio capture (local-mic meetings)
 - Recall.ai — meeting bot (online meetings)
 - Anthropic Claude `claude-sonnet-4-6` — suggestions, metadata extraction, reference matching, minute/summary/proposal generation (with prompt caching on catalog + system blocks); `claude-opus-4-8` for the agent-bridge exports
-- Tiptap — notes pad + document editor (all three doc types)
+- Tiptap — notes pad (live page + documents hub card, with formatting toolbar) + document editor (all doc types)
 
 ## Setup
 
 1. Copy `.env.example` to `.env.local` and fill in credentials
-2. Apply all migrations in `supabase/migrations/` in order (the instant-join/documents pivot is **`016`–`019`**, with **`020_cleanup.sql`** applied only after the cutover deploy is verified — see each file's header)
+2. Apply all migrations in `supabase/migrations/` in order (the instant-join/documents pivot is **`016`–`019`**, with **`020_cleanup.sql`** applied only after the cutover deploy is verified — see each file's header; **`021`** adds the `notes` doc type and must be applied before deploying that generator)
 3. Enable Supabase Realtime on `transcript_segments`, `suggestions`, `meetings`, `live_meeting_chat`, `deck_exports`
 4. Recall.ai powers online meetings. For local testing of the bot path, use ngrok to expose port 3000 and set `NEXT_PUBLIC_APP_URL` to the ngrok URL.
 
@@ -51,7 +51,7 @@ Note: due to spaces in the directory name, npm `.bin` symlinks don't work — us
 05 Instant join       /meetings/new                (mode picker only: Local mic | Online link)
 06 Active meeting     /meetings/[id]/live
 07 Processing         /meetings/[id]/processing
-08 Documents hub      /meetings/[id]/documents     (generate minute / summary / proposal + edit auto-detected metadata)
+08 Documents hub      /meetings/[id]/documents     (generate minute / summary / proposal / notes + edit metadata + edit meeting notes)
 09 Document editor    /meetings/[id]/documents/[docId]
 10 Export & share     /meetings/[id]/documents/[docId]/share
    Public view        /p/[slug]                    (no auth, all doc types)
@@ -92,6 +92,8 @@ End meeting → /processing → /documents (hub)
       (LLM over stored summaries), then generateProposal runs SINGLE-PASS with blend
       authority: unit prices ONLY from the live catalog; the matched reference's
       full_text drives scope structure, timelines, and service packaging.
+    · notes   → generateNotesDocument (ONLY the user's notes — polished/structured,
+      no transcript; 422 if the meeting has no notes)
   All documents are generated in the meeting's detected language and open in the same
   Tiptap editor (refine via /api/documents/[id]/refine, autosave via PATCH
   /api/documents/[id], share via /api/documents/[id]/share).
@@ -105,13 +107,13 @@ End meeting → /processing → /documents (hub)
 - `meetings` — `capture_mode ('browser'|'recall'|'both')`, `notes_json jsonb`, `attendees jsonb`, `context_summary`, `client_company`, `deal_status` (`draft|proposal_sent|won|lost`; `upcoming` legacy-only), `live_partial`, `recall_transcript_ready`, **`language`** + **`metadata_extracted_at`** (migration **`016`**). Deprecated (dropped in `020`): scheduled_at, selected_categories, attached/detected_product_ids, client_value, proposal_brief.
 - `transcript_segments` — `source ('browser'|'recall')`
 - `products` — id, user_id, name, category, description, price_amount, price_unit, currency, notes, active
-- **`meeting_documents`** (renamed from `proposals`, migration **`017`**) — `+doc_type ('minute'|'summary'|'proposal')`, `+title`, `+language`, content_json, status, public_slug, shared_at, open tracking. Multiple rows per meeting.
+- **`meeting_documents`** (renamed from `proposals`, migration **`017`**) — `+doc_type ('minute'|'summary'|'proposal'|'notes')` (notes added in migration **`021`**), `+title`, `+language`, content_json, status, public_slug, shared_at, open tracking. Multiple rows per meeting.
 - `reference_proposals` — summary (matching) + **`full_text`** (migration **`018`**, injected for the matched reference; null for legacy uploads — matching falls back to summary).
 - `deck_exports` — `+format ('pptx'|'docx'|'pdf')`, `proposal_id`→`document_id` (migration **`019`**); one row per export job.
 - `proposal_shares` — proposal_id (FK → meeting_documents), recipient_email, sent_at, opened_at, message_body
 
 ## Key files
-- `lib/claude.ts` — Anthropic SDK; `extractMeetingMetadata` (transcript → title/client/attendees/context/language), `matchReferenceProposal` (most-similar past reference), `generateMeetingMinute`, `generateTranscriptSummary`, `generateProposal` (single-pass, matched-reference + catalog blend), `streamDocumentRefine` (doc-type-aware), `generateSuggestions`, `streamLiveChat`, reference summarizers + `extractReferencePdfText`
+- `lib/claude.ts` — Anthropic SDK; `extractMeetingMetadata` (transcript → title/client/attendees/context/language), `matchReferenceProposal` (most-similar past reference), `generateMeetingMinute`, `generateTranscriptSummary`, `generateProposal` (single-pass, matched-reference + catalog blend), `generateNotesDocument` (notes-only polish), `streamDocumentRefine` (doc-type-aware), `generateSuggestions`, `streamLiveChat`, reference summarizers + `extractReferencePdfText`
 - `lib/meeting-inputs.ts` — `gatherMeetingInputs()`: single source of truth for the transcript/notes/catalog/references/live-chat/metadata bundle shared by every generation route
 - `lib/extract-meeting.ts` — `runMeetingExtraction()` (idempotent post-meeting metadata extraction) + `isPlaceholderTitle()`
 - `lib/document-export.ts` — `runDocumentExport()`: the Claude agent-bridge export worker for pptx/docx/pdf (code-execution + skills; pptx falls back to `lib/pptx.ts`)
@@ -134,7 +136,7 @@ End meeting → /processing → /documents (hub)
 - `app/api/profile/route.ts`, `app/api/profile/onboard/route.ts` — profile + onboarding
 - `components/layout/PMSidebar.tsx` — Workspace + Library sections, counts via `getSidebarCounts`
 - `components/ui/{icon,pill,avatar-initials,wave,glass-card,segmented,aurora-orb,checklist}.tsx` — design primitives
-- `components/meeting/{MeetingToolbar,TranscriptPanel,NotesPad,LiveChatPanel,CollapsiblePanel,AudioCaptureButton,useMicCapture}.tsx` — active meeting
+- `components/meeting/{MeetingToolbar,TranscriptPanel,NotesPad,NotesToolbar,LiveChatPanel,CollapsiblePanel,AudioCaptureButton,useMicCapture}.tsx` — active meeting (NotesPad has `variant='live'|'card'`, formatting toolbar, save-status footer, keepalive flush on unmount)
 - `components/proposal/{OutlineSidebar,ProposalToolbar,ProposalEditor,SignatureBlock,RefineDrawer,TranscriptDrawer}.tsx` — document editor (all doc types; components take `documentId`)
 - `components/share/{ProposalThumbnail,ShareLinkCard,RecipientsCard,ExportActions}.tsx` — share/export (Word + PDF + PowerPoint via the agent bridge)
 
@@ -153,7 +155,7 @@ End meeting → /processing → /documents (hub)
 
 ## Branded exports (agent bridge)
 
-**Every in-product file export** (Word `.docx`, PDF, PowerPoint `.pptx` — for all three doc types) runs through the **Claude agent bridge**: `lib/document-export.ts` `runDocumentExport()` executes Claude (`claude-opus-4-8`, override with `PPTX_SKILL_MODEL`) with the built-in document skill for the format (`pptx` / `docx` / `pdf`) inside a code-execution container (betas `code-execution-2025-08-25`, `skills-2025-10-02`, `files-api-2025-04-14`), branded from `user_profiles` (colors/logo/signature) and written in the document's `language`. Jobs live in `deck_exports` (Realtime-enabled; polled via `/api/documents/[id]/export/download`), output lands in the private `generated-decks` bucket at `{user_id}/{job_id}.{ext}`.
+**Every in-product file export** (Word `.docx`, PDF, PowerPoint `.pptx` — for all doc types) runs through the **Claude agent bridge**: `lib/document-export.ts` `runDocumentExport()` executes Claude (`claude-opus-4-8`, override with `PPTX_SKILL_MODEL`) with the built-in document skill for the format (`pptx` / `docx` / `pdf`) inside a code-execution container (betas `code-execution-2025-08-25`, `skills-2025-10-02`, `files-api-2025-04-14`), branded from `user_profiles` (colors/logo/signature) and written in the document's `language`. Jobs live in `deck_exports` (Realtime-enabled; polled via `/api/documents/[id]/export/download`), output lands in the private `generated-decks` bucket at `{user_id}/{job_id}.{ext}`.
 
 - **PPTX proposals** additionally load the custom **`pptx-proposal-deck`** skill (`.claude/skills/pptx-proposal-deck/`, id in `ANTHROPIC_PPTX_SKILL_ID`; re-register with `scripts/register-pptx-skill.ts` after editing): Mode A reproduces an uploaded brand template on every slide, Mode B designs from the profile brand. Its narrative input is the **proposal document itself** (`references/propmaker-narrative-map.md` maps the 6 sections → slides; one detail slide per *Priorities & Key Deliverables* bullet — the old `ProposalBrief` no longer exists). No prices in the deck.
 - **Fallbacks:** pptx falls back to the instant pptxgenjs deck (`lib/pptx.ts`, also available directly via GET `/api/documents/[id]/export`); docx/pdf jobs fail cleanly and the client offers `/p/[slug]?print=1` as the manual PDF escape hatch.

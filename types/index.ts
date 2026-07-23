@@ -14,7 +14,7 @@ export interface MeetingAttendee {
 }
 
 /** The kinds of documents a meeting can produce, each a `meeting_documents` row. */
-export type DocType = 'minute' | 'summary' | 'proposal'
+export type DocType = 'minute' | 'summary' | 'proposal' | 'notes'
 
 export interface UserProfile {
   user_id: string
@@ -198,6 +198,7 @@ export const DOC_TYPE_LABELS: Record<DocType, string> = {
   minute: 'Meeting minute',
   summary: 'Transcript summary',
   proposal: 'Proposal',
+  notes: 'Notes document',
 }
 
 export const PRICE_UNIT_LABELS: Record<PriceUnit, string> = {
