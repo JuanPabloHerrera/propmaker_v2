@@ -22,7 +22,14 @@ export function AgentWorkingOverlay({ open, title, subtitle }: Props) {
       role="status"
       aria-live="polite"
       className="fixed inset-0 z-50 grid place-items-center glass-strong pm-no-print"
-      style={{ background: 'rgba(255, 252, 245, 0.72)' }}
+      style={{
+        // Inline `position`/insets: `.glass-strong` sets position:relative and
+        // overrides Tailwind's `fixed`/`inset-0` (it loads after the Tailwind
+        // import in globals.css), which would leave this in normal flow.
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(255, 252, 245, 0.72)',
+      }}
     >
       <div className="flex flex-col items-center text-center" style={{ maxWidth: 420, padding: 24 }}>
         <AuroraOrb size={120} />

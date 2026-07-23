@@ -9,6 +9,7 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import type { TiptapDocument, TiptapNode } from '@/types'
+import { sanitizeDoc } from '@/lib/tiptap'
 import type { OutlineSection } from './OutlineSidebar'
 
 interface Props {
@@ -179,25 +180,6 @@ function upgradeLegacyTables(doc: TiptapDocument): TiptapDocument {
     next.push(nodes[i])
   }
   return sanitizeDoc({ type: 'doc', content: next })
-}
-
-// Strip empty text nodes anywhere in the tree — ProseMirror throws on them.
-// Stored proposals from earlier versions may already contain `{type:'text',text:''}`.
-function sanitizeDoc(doc: TiptapDocument): TiptapDocument {
-  const visit = (n: TiptapNode): TiptapNode | null => {
-    if (n.type === 'text') {
-      return n.text && n.text.length > 0 ? n : null
-    }
-    if (n.content) {
-      const cleaned = n.content.map(visit).filter((c): c is TiptapNode => c !== null)
-      return { ...n, content: cleaned }
-    }
-    return n
-  }
-  return {
-    type: 'doc',
-    content: doc.content.map(visit).filter((c): c is TiptapNode => c !== null),
-  }
 }
 
 function slugify(s: string): string {

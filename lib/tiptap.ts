@@ -14,6 +14,28 @@ export function tiptapToText(doc: TiptapDocument | null | undefined): string {
   return walk(doc.content).trim()
 }
 
+/**
+ * Strip empty text nodes anywhere in the tree — ProseMirror throws on them,
+ * so a stored document containing `{type:'text',text:''}` would crash editor
+ * creation on load. Shared by NotesPad and ProposalEditor.
+ */
+export function sanitizeDoc(doc: TiptapDocument): TiptapDocument {
+  const visit = (n: TiptapNode): TiptapNode | null => {
+    if (n.type === 'text') {
+      return n.text && n.text.length > 0 ? n : null
+    }
+    if (n.content) {
+      const cleaned = n.content.map(visit).filter((c): c is TiptapNode => c !== null)
+      return { ...n, content: cleaned }
+    }
+    return n
+  }
+  return {
+    type: 'doc',
+    content: (doc.content ?? []).map(visit).filter((c): c is TiptapNode => c !== null),
+  }
+}
+
 /** Flatten inline nodes to plain text, stripping all marks. */
 export function inlineText(nodes: TiptapNode[] | undefined): string {
   if (!nodes) return ''

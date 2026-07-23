@@ -46,6 +46,20 @@ export function FloatingRefineChat({ documentId, onApplied }: Props) {
     if (open) setTimeout(() => inputRef.current?.focus(), 80)
   }, [open])
 
+  // Shrink to fit short/narrow viewports (never grows, so a size the user
+  // picked is preserved). The 520px default would overflow a laptop window
+  // with devtools open.
+  React.useEffect(() => {
+    const clamp = () =>
+      setSize((s) => ({
+        w: Math.min(s.w, Math.max(280, window.innerWidth - 40)),
+        h: Math.min(s.h, Math.max(240, window.innerHeight - 40)),
+      }))
+    clamp()
+    window.addEventListener('resize', clamp)
+    return () => window.removeEventListener('resize', clamp)
+  }, [])
+
   // Auto-scroll on new messages / streaming chunks.
   React.useEffect(() => {
     const el = scrollRef.current
@@ -230,6 +244,10 @@ export function FloatingRefineChat({ documentId, onApplied }: Props) {
       aria-label="AI refine chat"
       className="fixed z-40 flex flex-col glass-strong pm-no-print"
       style={{
+        // `position` must stay inline: `.glass-strong` declares position:relative
+        // and, being defined after Tailwind's import in globals.css, it would
+        // otherwise win over the `fixed` utility and drop this panel into flow.
+        position: 'fixed',
         right: 20,
         bottom: 20,
         width: size.w,
