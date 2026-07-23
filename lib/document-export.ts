@@ -28,9 +28,9 @@ const FORMAT_MIME: Record<ExportFormat, string> = {
 const TEMPLATE_BUCKET = 'reference-decks'
 const OUTPUT_BUCKET = 'generated-decks'
 
-// Heavy agentic skill work — Opus is the right tier (the app otherwise uses
-// sonnet-4-6). Override with PPTX_SKILL_MODEL if cost matters.
-const MODEL = process.env.PPTX_SKILL_MODEL || 'claude-opus-4-8'
+// Heavy agentic skill work. Set PPTX_SKILL_MODEL=claude-opus-4-8 to fall back to
+// the Opus tier if deck fidelity regresses — that is the rollback for this build.
+const MODEL = process.env.PPTX_SKILL_MODEL || 'claude-sonnet-5'
 // Skills run in the code-execution container; Files API moves the template in
 // and the finished file out.
 const SKILL_BETAS = [

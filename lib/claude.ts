@@ -22,8 +22,12 @@ export async function generateSuggestions(
   const label = MEETING_TYPE_LABELS[meetingType]
 
   const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-5',
     max_tokens: 512,
+    // Thinking disabled: Sonnet 5 runs adaptive thinking when `thinking` is
+    // omitted, which would spend this call's small budget on reasoning and
+    // truncate the JSON. This call is latency-critical and returns structured data.
+    thinking: { type: 'disabled' },
     system: `You are a meeting coach helping a consultant run a ${label} discovery call.
 Given the transcript so far, suggest the single sharpest follow-up question the consultant should ask next.
 Return ONLY a JSON array with exactly one string. No markdown, no explanation. Example: ["Question?"]`,
@@ -94,8 +98,8 @@ Be specific and concrete; skip boilerplate, legal text, and contact details. Ret
 
 async function runReferenceSummary(content: Anthropic.MessageParam['content']): Promise<string> {
   const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
+    model: 'claude-sonnet-5',
+    max_tokens: 2048,
     system: REFERENCE_SUMMARY_SYSTEM,
     messages: [{ role: 'user', content }],
   })
@@ -124,8 +128,12 @@ export function summarizeReferencePdf(pdfBase64: string): Promise<string> {
 export async function extractReferencePdfText(pdfBase64: string): Promise<string> {
   try {
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 16384,
+      // Thinking disabled: Sonnet 5 runs adaptive thinking when `thinking` is
+      // omitted, which would spend this call's small budget on reasoning and
+      // truncate the JSON. This call is latency-critical and returns structured data.
+      thinking: { type: 'disabled' },
       system:
         'You transcribe business documents. Return the COMPLETE plain text of the attached PDF in reading order, preserving headings and tables as simple text lines. Skip page numbers, headers/footers, and decorative elements. Return only the transcription — no commentary, no code fences.',
       messages: [
@@ -255,8 +263,12 @@ export async function extractMeetingMetadata({
 
   try {
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 1024,
+      // Thinking disabled: Sonnet 5 runs adaptive thinking when `thinking` is
+      // omitted, which would spend this call's small budget on reasoning and
+      // truncate the JSON. This call is latency-critical and returns structured data.
+      thinking: { type: 'disabled' },
       system: `You label business-meeting transcripts. Extract metadata from the meeting below.
 
 Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
@@ -325,8 +337,12 @@ export async function matchReferenceProposal({
 
   try {
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 512,
+      // Thinking disabled: Sonnet 5 runs adaptive thinking when `thinking` is
+      // omitted, which would spend this call's small budget on reasoning and
+      // truncate the JSON. This call is latency-critical and returns structured data.
+      thinking: { type: 'disabled' },
       system: `You match a new client engagement against a library of the user's PAST proposals to find the single most similar past project (by industry, project type, scope, and deal shape).
 
 Return ONLY a JSON object: { "refId": string|null, "reason": string }
@@ -429,8 +445,8 @@ export async function generateMeetingMinute({
     .join('\n\n')
 
   const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
+    model: 'claude-sonnet-5',
+    max_tokens: 8192,
     system: [{ type: 'text', text: MINUTE_INSTRUCTIONS, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userContent }],
   })
@@ -477,8 +493,8 @@ export async function generateTranscriptSummary({
     .join('\n\n')
 
   const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 3072,
+    model: 'claude-sonnet-5',
+    max_tokens: 6144,
     system: [{ type: 'text', text: SUMMARY_INSTRUCTIONS, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userContent }],
   })
@@ -524,8 +540,8 @@ export async function generateNotesDocument({
     .join('\n\n')
 
   const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 3072,
+    model: 'claude-sonnet-5',
+    max_tokens: 6144,
     system: [{ type: 'text', text: NOTES_DOC_INSTRUCTIONS, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userContent }],
   })
@@ -643,8 +659,8 @@ Return only the Markdown content — no preamble, no commentary.`
   // The matched reference supersedes the old cached "all references" system
   // block for proposal generation — instructions + catalog stay cached.
   const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 6144,
+    model: 'claude-sonnet-5',
+    max_tokens: 12288,
     system: buildSystemBlocks(instructions, catalogBlock, undefined),
     messages: [{ role: 'user', content: userContent }],
   })
@@ -658,8 +674,12 @@ export function streamLiveChat(
   meetingType: MeetingType
 ) {
   return anthropic.messages.stream({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-5',
     max_tokens: 512,
+    // Thinking disabled: Sonnet 5 runs adaptive thinking when `thinking` is
+    // omitted, which would spend this call's small budget on reasoning and
+    // truncate the JSON. This call is latency-critical and returns structured data.
+    thinking: { type: 'disabled' },
     system: `You are a real-time meeting assistant helping a consultant during a live ${MEETING_TYPE_LABELS[meetingType]} meeting.
 The live transcript is attached below. Your role:
 - Answer the consultant's questions about what's been discussed
@@ -783,8 +803,8 @@ Your behavior in this turn:
   if (refineRefBlock) refineSystem.push(refineRefBlock)
 
   return anthropic.messages.stream({
-    model: 'claude-sonnet-4-6',
-    max_tokens: mode === 'apply' ? 6144 : 768,
+    model: 'claude-sonnet-5',
+    max_tokens: mode === 'apply' ? 12288 : 2048,
     system: refineSystem,
     messages,
   })

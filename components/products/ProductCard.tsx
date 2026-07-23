@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import type { Product } from '@/types'
 import { PRICE_UNIT_LABELS } from '@/types'
 import { Icon } from '@/components/ui/icon'
@@ -18,14 +17,21 @@ export function formatPrice(product: Product): string {
   return `${product.currency} ${amount}${unit}`
 }
 
-export function ProductCard({ product }: { product: Product }) {
+export function ProductCard({
+  product,
+  onSelect,
+}: {
+  product: Product
+  onSelect: (product: Product) => void
+}) {
   const tag = productTag(product)
   const isRetainer = tag === 'RETAINER'
 
   return (
-    <Link
-      href={`/products/${product.id}`}
-      className="card p-4 flex flex-col gap-2.5 hover:shadow-[0_6px_22px_rgba(28,22,14,0.10)] transition-shadow"
+    <button
+      type="button"
+      onClick={() => onSelect(product)}
+      className="card p-4 flex flex-col gap-2.5 text-left hover:shadow-[0_6px_22px_rgba(28,22,14,0.10)] transition-shadow"
     >
       <div className="flex items-center justify-between">
         <span
@@ -83,6 +89,6 @@ export function ProductCard({ product }: { product: Product }) {
           {formatPrice(product)}
         </span>
       </div>
-    </Link>
+    </button>
   )
 }

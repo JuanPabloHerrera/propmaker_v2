@@ -30,6 +30,14 @@ const nextConfig: NextConfig = {
   // so Node loads it as CJS and throws. It has no native deps (only jszip), so
   // let Turbopack bundle it instead.
   serverExternalPackages: ['mammoth'],
+  // /products and /references merged into /resources — keep old links working.
+  async redirects() {
+    return [
+      { source: '/products', destination: '/resources', permanent: false },
+      { source: '/products/:path*', destination: '/resources', permanent: false },
+      { source: '/references', destination: '/resources', permanent: false },
+    ]
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: '2mb',

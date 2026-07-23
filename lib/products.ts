@@ -38,8 +38,12 @@ Example: ["b3f...","9c1..."]`
 
   try {
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 256,
+      // Thinking disabled: Sonnet 5 runs adaptive thinking when `thinking` is
+      // omitted, which would spend this call's small budget on reasoning and
+      // truncate the JSON. This call is latency-critical and returns structured data.
+      thinking: { type: 'disabled' },
       system,
       messages: [
         {

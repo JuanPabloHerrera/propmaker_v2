@@ -24,7 +24,11 @@ function isPptx(file: File): boolean {
   return file.type === PPTX_MIME || /\.pptx$/i.test(file.name)
 }
 
-export default function ReferencesPage() {
+/**
+ * "Reference files" half of the Resources page — past proposals and .pptx brand
+ * templates. Loads its own data client-side (the catalog half is server-fetched).
+ */
+export function ReferenceFilesSection() {
   const supabase = React.useMemo(() => createClient(), [])
   const [refs, setRefs] = React.useState<ReferenceProposal[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -192,16 +196,21 @@ export default function ReferencesPage() {
   }
 
   return (
-    <div className="pm-page" style={{ padding: '28px 36px 32px' }}>
-      <div className="pm-eyebrow">Library</div>
-      <h1 className="pm-h1" style={{ marginBottom: 6 }}>
-        Reference proposals
-      </h1>
-      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 22, maxWidth: 640 }}>
-        Add past proposals so the agent can echo the structure, tone, and pricing approach of similar
-        projects when drafting new ones. Each one is summarized on save — line items still come only from
-        your catalog.
-      </p>
+    <section>
+      <div className="mb-3.5">
+        <div className="flex items-center gap-2">
+          <div className="text-[14px] font-semibold" style={{ color: 'var(--ink-1)' }}>
+            Reference files
+          </div>
+          <span className="mono-num" style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+            {refs.length}
+          </span>
+        </div>
+        <p className="text-[12px] mt-0.5" style={{ color: 'var(--ink-3)', maxWidth: 640 }}>
+          Past proposals the agent echoes for structure, tone, and pricing approach — plus .pptx brand
+          templates used by exports. Each is summarized on save; line items still come only from your services.
+        </p>
+      </div>
 
       <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1.3fr' }}>
         {/* Add column */}
@@ -363,15 +372,6 @@ export default function ReferencesPage() {
 
         {/* Library column */}
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <div className="text-[13px] font-semibold" style={{ color: 'var(--ink-1)' }}>
-              Your library
-            </div>
-            <span className="mono-num" style={{ fontSize: 11, color: 'var(--ink-3)' }}>
-              {refs.length}
-            </span>
-          </div>
-
           {loading ? (
             <div className="text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
               Loading…
@@ -403,6 +403,6 @@ export default function ReferencesPage() {
           )}
         </div>
       </div>
-    </div>
+    </section>
   )
 }

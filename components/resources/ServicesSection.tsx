@@ -1,12 +1,13 @@
 'use client'
 
 import * as React from 'react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { Product } from '@/types'
 import { Icon } from '@/components/ui/icon'
 import { Segmented } from '@/components/ui/segmented'
-import { ProductCard } from './ProductCard'
-import { ProductTable } from './ProductTable'
+import { ProductCard } from '@/components/products/ProductCard'
+import { ProductTable } from '@/components/products/ProductTable'
+import { ServiceFormDrawer } from './ServiceFormDrawer'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -16,10 +17,18 @@ interface Props {
 
 type ViewMode = 'grid' | 'table'
 
-export function CatalogToolbar({ products, categories }: Props) {
+/**
+ * "Services" half of the Resources page — the product catalog. Add/edit happens
+ * in a slide-over (ServiceFormDrawer) rather than the old /products/* pages, so
+ * the list never navigates away.
+ */
+export function ServicesSection({ products, categories }: Props) {
+  const router = useRouter()
   const [search, setSearch] = React.useState('')
-  const [category, setCategory] = React.useState<string>('All')
+  const [category, setCategory] = React.useState('All')
   const [view, setView] = React.useState<ViewMode>('grid')
+  const [drawerOpen, setDrawerOpen] = React.useState(false)
+  const [editing, setEditing] = React.useState<Product | null>(null)
 
   const filtered = React.useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -36,14 +45,26 @@ export function CatalogToolbar({ products, categories }: Props) {
 
   const cats = ['All', ...categories]
 
+  function openNew() {
+    setEditing(null)
+    setDrawerOpen(true)
+  }
+
+  function openEdit(product: Product) {
+    setEditing(product)
+    setDrawerOpen(true)
+  }
+
   return (
-    <>
-      <div className="flex items-end justify-between gap-4 mb-[22px]">
+    <section>
+      <div className="flex items-end justify-between gap-4 mb-3.5">
         <div>
-          <div className="pm-eyebrow">
-            Library · {products.length} item{products.length !== 1 ? 's' : ''}
+          <div className="text-[14px] font-semibold" style={{ color: 'var(--ink-1)' }}>
+            Services
           </div>
-          <h1 className="pm-h1">Products &amp; Services</h1>
+          <p className="text-[12px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+            The offerings you sell. Proposals price line items from this catalog only.
+          </p>
         </div>
         <div className="flex items-center gap-2.5">
           <Segmented<ViewMode>
@@ -54,8 +75,9 @@ export function CatalogToolbar({ products, categories }: Props) {
             value={view}
             onChange={setView}
           />
-          <Link
-            href="/products/new"
+          <button
+            type="button"
+            onClick={openNew}
             className="inline-flex items-center gap-1.5 font-medium text-white"
             style={{
               height: 28,
@@ -70,8 +92,8 @@ export function CatalogToolbar({ products, categories }: Props) {
             }}
           >
             <Icon name="plus" />
-            New product
-          </Link>
+            New service
+          </button>
         </div>
       </div>
 
@@ -87,7 +109,7 @@ export function CatalogToolbar({ products, categories }: Props) {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search catalog…"
+            placeholder="Search services…"
             className="flex-1 bg-transparent outline-none"
             style={{ fontSize: 12, color: 'var(--ink-1)' }}
           />
@@ -98,10 +120,7 @@ export function CatalogToolbar({ products, categories }: Props) {
               key={c}
               type="button"
               onClick={() => setCategory(c)}
-              className={cn(
-                'pill cursor-pointer transition-colors',
-                category === c && 'pill-accent',
-              )}
+              className={cn('pill cursor-pointer transition-colors', category === c && 'pill-accent')}
               style={{ height: 26, fontSize: 11.5, padding: '0 12px' }}
             >
               {c}
@@ -112,11 +131,8 @@ export function CatalogToolbar({ products, categories }: Props) {
 
       {filtered.length === 0 ? (
         <div className="card p-10 flex flex-col items-center text-center">
-          <div
-            className="text-[13px] font-semibold mb-1"
-            style={{ color: 'var(--ink-1)' }}
-          >
-            {products.length === 0 ? 'No products yet' : 'No matches'}
+          <div className="text-[13px] font-semibold mb-1" style={{ color: 'var(--ink-1)' }}>
+            {products.length === 0 ? 'No services yet' : 'No matches'}
           </div>
           <div className="text-[12px] mb-4" style={{ color: 'var(--ink-3)' }}>
             {products.length === 0
@@ -124,8 +140,9 @@ export function CatalogToolbar({ products, categories }: Props) {
               : 'Try a different search or category.'}
           </div>
           {products.length === 0 && (
-            <Link
-              href="/products/new"
+            <button
+              type="button"
+              onClick={openNew}
               className="inline-flex items-center gap-1.5 text-white font-medium"
               style={{
                 height: 32,
@@ -137,19 +154,27 @@ export function CatalogToolbar({ products, categories }: Props) {
               }}
             >
               <Icon name="plus" />
-              Add your first product
-            </Link>
+              Add your first service
+            </button>
           )}
         </div>
       ) : view === 'grid' ? (
         <div className="grid grid-cols-3 gap-3">
           {filtered.map((p) => (
-            <ProductCard key={p.id} product={p} />
+            <ProductCard key={p.id} product={p} onSelect={openEdit} />
           ))}
         </div>
       ) : (
-        <ProductTable products={filtered} />
+        <ProductTable products={filtered} onSelect={openEdit} />
       )}
-    </>
+
+      <ServiceFormDrawer
+        open={drawerOpen}
+        product={editing}
+        categories={categories}
+        onClose={() => setDrawerOpen(false)}
+        onSaved={() => router.refresh()}
+      />
+    </section>
   )
 }

@@ -9,7 +9,7 @@ Mac-app-style AI meeting intelligence + document generator. The user joins a mee
 - Supabase (auth, postgres, realtime)
 - Deepgram streaming WebSocket — browser-side audio capture (local-mic meetings)
 - Recall.ai — meeting bot (online meetings)
-- Anthropic Claude `claude-sonnet-4-6` — suggestions, metadata extraction, reference matching, minute/summary/proposal generation (with prompt caching on catalog + system blocks); `claude-opus-4-8` for the agent-bridge exports
+- Anthropic Claude `claude-sonnet-5` — every LLM call: suggestions, metadata extraction, reference matching, minute/summary/notes/proposal generation, refine, and the agent-bridge exports (with prompt caching on catalog + system blocks)
 - Tiptap — notes pad (live page + documents hub card, with formatting toolbar) + document editor (all doc types)
 
 ## Setup
@@ -46,7 +46,7 @@ Note: due to spaces in the directory name, npm `.bin` symlinks don't work — us
 ```
 01 Onboarding         /welcome                     (auth group, no sidebar)
 02 Profile            /profile
-03 Catalog            /products
+03 Resources          /resources                   (Services + Reference files, stacked)
 04 Dashboard          /
 05 Instant join       /meetings/new                (mode picker only: Local mic | Online link)
 06 Active meeting     /meetings/[id]/live
@@ -155,7 +155,7 @@ End meeting → /processing → /documents (hub)
 
 ## Branded exports (agent bridge)
 
-**Every in-product file export** (Word `.docx`, PDF, PowerPoint `.pptx` — for all doc types) runs through the **Claude agent bridge**: `lib/document-export.ts` `runDocumentExport()` executes Claude (`claude-opus-4-8`, override with `PPTX_SKILL_MODEL`) with the built-in document skill for the format (`pptx` / `docx` / `pdf`) inside a code-execution container (betas `code-execution-2025-08-25`, `skills-2025-10-02`, `files-api-2025-04-14`), branded from `user_profiles` (colors/logo/signature) and written in the document's `language`. Jobs live in `deck_exports` (Realtime-enabled; polled via `/api/documents/[id]/export/download`), output lands in the private `generated-decks` bucket at `{user_id}/{job_id}.{ext}`.
+**Every in-product file export** (Word `.docx`, PDF, PowerPoint `.pptx` — for all doc types) runs through the **Claude agent bridge**: `lib/document-export.ts` `runDocumentExport()` executes Claude (`claude-sonnet-5`; set `PPTX_SKILL_MODEL=claude-opus-4-8` to roll back to the Opus tier) with the built-in document skill for the format (`pptx` / `docx` / `pdf`) inside a code-execution container (betas `code-execution-2025-08-25`, `skills-2025-10-02`, `files-api-2025-04-14`), branded from `user_profiles` (colors/logo/signature) and written in the document's `language`. Jobs live in `deck_exports` (Realtime-enabled; polled via `/api/documents/[id]/export/download`), output lands in the private `generated-decks` bucket at `{user_id}/{job_id}.{ext}`.
 
 - **PPTX proposals** additionally load the custom **`pptx-proposal-deck`** skill (`.claude/skills/pptx-proposal-deck/`, id in `ANTHROPIC_PPTX_SKILL_ID`; re-register with `scripts/register-pptx-skill.ts` after editing): Mode A reproduces an uploaded brand template on every slide, Mode B designs from the profile brand. Its narrative input is the **proposal document itself** (`references/propmaker-narrative-map.md` maps the 6 sections → slides; one detail slide per *Priorities & Key Deliverables* bullet — the old `ProposalBrief` no longer exists). No prices in the deck.
 - **Fallbacks:** pptx falls back to the instant pptxgenjs deck (`lib/pptx.ts`, also available directly via GET `/api/documents/[id]/export`); docx/pdf jobs fail cleanly and the client offers `/p/[slug]?print=1` as the manual PDF escape hatch.

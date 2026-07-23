@@ -27,7 +27,7 @@ export function GreetingHeader({ firstName }: GreetingHeaderProps) {
       </div>
       <div className="flex gap-2.5">
         <Link
-          href="/products"
+          href="/resources"
           className="inline-flex items-center gap-1.5 font-medium"
           style={{
             height: 28,
@@ -42,7 +42,7 @@ export function GreetingHeader({ firstName }: GreetingHeaderProps) {
           }}
         >
           <Icon name="box" />
-          Catalog
+          Resources
         </Link>
         <Link
           href="/meetings/new"

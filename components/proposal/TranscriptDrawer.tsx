@@ -107,6 +107,13 @@ export function TranscriptDrawer({ open, onClose, meetingId }: Props) {
       <div
         className="absolute right-0 top-0 bottom-0 flex flex-col glass-strong"
         style={{
+          // `position` must stay inline: `.glass-strong` declares position:relative
+          // as unlayered CSS, which outranks Tailwind's layered `absolute` utility
+          // and would drop this panel back into normal flow.
+          position: 'absolute',
+          right: 0,
+          top: 0,
+          bottom: 0,
           width: 'min(440px, 92vw)',
           borderRadius: 0,
           borderLeft: '0.5px solid var(--line-1)',

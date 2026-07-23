@@ -1,13 +1,13 @@
-import Link from 'next/link'
 import type { Product } from '@/types'
 import { Icon } from '@/components/ui/icon'
 import { productTag, formatPrice } from './ProductCard'
 
 interface Props {
   products: Product[]
+  onSelect: (product: Product) => void
 }
 
-export function ProductTable({ products }: Props) {
+export function ProductTable({ products, onSelect }: Props) {
   return (
     <div className="card overflow-hidden">
       <div
@@ -30,10 +30,11 @@ export function ProductTable({ products }: Props) {
         <div />
       </div>
       {products.map((p, i) => (
-        <Link
+        <button
           key={p.id}
-          href={`/products/${p.id}`}
-          className="grid items-center hover:bg-[rgba(28,24,20,0.025)] transition-colors"
+          type="button"
+          onClick={() => onSelect(p)}
+          className="grid items-center text-left w-full hover:bg-[rgba(28,24,20,0.025)] transition-colors"
           style={{
             gridTemplateColumns: '2fr 1fr 0.8fr 1fr 30px',
             padding: '12px 18px',
@@ -67,7 +68,7 @@ export function ProductTable({ products }: Props) {
           <span style={{ color: 'var(--ink-3)' }}>
             <Icon name="chevR" size={12} />
           </span>
-        </Link>
+        </button>
       ))}
     </div>
   )

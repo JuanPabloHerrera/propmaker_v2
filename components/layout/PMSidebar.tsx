@@ -47,12 +47,13 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
   const library: NavItem[] = [
     { id: 'profile', label: 'Profile', href: '/profile', icon: 'user' },
     {
-      id: 'catalog',
-      label: 'Catalog',
-      href: '/products',
+      id: 'resources',
+      label: 'Resources',
+      href: '/resources',
       icon: 'box',
-      badge: counts.products || undefined,
-      matcher: (p) => p.startsWith('/products'),
+      // One badge for both halves of the page: services + reference files.
+      badge: counts.products + counts.references || undefined,
+      matcher: (p) => p.startsWith('/resources'),
     },
     {
       id: 'proposals',
@@ -60,14 +61,6 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
       href: '/?filter=proposals',
       icon: 'doc',
       badge: counts.proposals || undefined,
-    },
-    {
-      id: 'references',
-      label: 'References',
-      href: '/references',
-      icon: 'archive',
-      badge: counts.references || undefined,
-      matcher: (p) => p.startsWith('/references'),
     },
     {
       id: 'meetings',
