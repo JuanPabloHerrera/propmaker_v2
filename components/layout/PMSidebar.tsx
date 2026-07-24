@@ -42,6 +42,12 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
       icon: 'plus',
       accent: true,
     },
+    {
+      id: 'upload',
+      label: 'Upload Meeting',
+      href: '/meetings/upload',
+      icon: 'upload',
+    },
   ]
 
   const library: NavItem[] = [

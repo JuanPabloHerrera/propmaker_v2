@@ -2,8 +2,8 @@ export type MeetingType = 'software' | 'real_estate' | 'consulting' | 'custom'
 export type MeetingStatus = 'pending' | 'active' | 'completed' | 'failed'
 export type ProposalStatus = 'draft' | 'final'
 export type ChatRole = 'assistant' | 'user'
-export type CaptureMode = 'browser' | 'recall' | 'both'
-export type TranscriptSource = 'browser' | 'recall'
+export type CaptureMode = 'browser' | 'recall' | 'both' | 'upload'
+export type TranscriptSource = 'browser' | 'recall' | 'upload'
 export type PriceUnit = 'fixed' | 'hour' | 'day' | 'sqm' | 'project' | 'unit' | 'month'
 export type DealStatus = 'draft' | 'proposal_sent' | 'won' | 'lost' | 'upcoming'
 
@@ -220,6 +220,7 @@ export const CAPTURE_MODE_LABELS: Record<CaptureMode, string> = {
   browser: 'Local mic',
   recall: 'Conferencing (bot)',
   both: 'Conferencing',
+  upload: 'Uploaded',
 }
 
 export const DOC_TYPE_LABELS: Record<DocType, string> = {

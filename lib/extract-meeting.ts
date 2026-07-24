@@ -74,7 +74,11 @@ export async function runMeetingExtraction(
   const rows = (segments ?? []) as Array<{ speaker: string | null; text: string; source: string }>
   const formatSeg = (s: { speaker: string | null; text: string }) =>
     `${s.speaker ?? 'Speaker'}: ${s.text}`
-  const browserTranscript = rows.filter((s) => s.source === 'browser').map(formatSeg).join('\n')
+  // Uploaded transcripts rank alongside browser capture as the primary source.
+  const browserTranscript = rows
+    .filter((s) => s.source === 'browser' || s.source === 'upload')
+    .map(formatSeg)
+    .join('\n')
   const recallTranscript = rows.filter((s) => s.source === 'recall').map(formatSeg).join('\n')
 
   const { tiptapToText } = await import('@/lib/tiptap')

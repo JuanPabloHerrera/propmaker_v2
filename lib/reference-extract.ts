@@ -30,7 +30,10 @@ export function isPptxFile(name: string, mime: string): boolean {
   return mime === PPTX_MIME || /\.pptx$/i.test(name)
 }
 
-export async function extractDocxText(buffer: ArrayBuffer): Promise<string> {
+export async function extractDocxText(
+  buffer: ArrayBuffer,
+  maxChars: number = MAX_REFERENCE_CHARS,
+): Promise<string> {
   // IMPORTANT: mammoth's Node build only recognizes a Node `buffer` input.
   // Passing `{ arrayBuffer }` (the browser-build key) throws
   // "Could not find file in options" for every file, so DOCX uploads always
@@ -43,11 +46,14 @@ export async function extractDocxText(buffer: ArrayBuffer): Promise<string> {
       'Could not read this Word file — it may be corrupted or an older .doc format. Try exporting it to PDF.',
     )
   }
-  return (result.value || '').slice(0, MAX_REFERENCE_CHARS)
+  return (result.value || '').slice(0, maxChars)
 }
 
-export function decodePlainText(buffer: ArrayBuffer): string {
-  return new TextDecoder().decode(buffer).slice(0, MAX_REFERENCE_CHARS)
+export function decodePlainText(
+  buffer: ArrayBuffer,
+  maxChars: number = MAX_REFERENCE_CHARS,
+): string {
+  return new TextDecoder().decode(buffer).slice(0, maxChars)
 }
 
 export function extractInAppProposalText(doc: TiptapDocument | null | undefined): string {

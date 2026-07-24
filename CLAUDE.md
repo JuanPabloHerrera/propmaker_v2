@@ -49,6 +49,7 @@ Note: due to spaces in the directory name, npm `.bin` symlinks don't work — us
 03 Resources          /resources                   (Services + Reference files, stacked)
 04 Dashboard          /
 05 Instant join       /meetings/new                (mode picker only: Local mic | Online link)
+05b Upload meeting    /meetings/upload             (file or pasted transcript → straight to the hub)
 06 Active meeting     /meetings/[id]/live
 07 Processing         /meetings/[id]/processing
 08 Documents hub      /meetings/[id]/documents     (generate minute / summary / proposal / notes + edit metadata + edit meeting notes)
@@ -72,6 +73,14 @@ Online meeting ("recall")
   /meetings/new POSTs { mode:'online', meeting_url } → POST /api/meetings/[id]/bot → Recall.ai
     → POST /api/webhooks/recall
     → transcript_segments INSERT (source='recall')
+
+Uploaded meeting ("upload")
+  /meetings/upload POSTs multipart (file or pasted_text) → POST /api/meetings/upload
+    → extracts text (PDF via Claude, DOCX via mammoth, TXT/MD decoded; ≤150k chars)
+    → meetings INSERT (status='completed', capture_mode='upload')
+    → transcript_segments INSERT (source='upload', one segment, treated as primary
+      alongside 'browser' in gatherMeetingInputs + runMeetingExtraction)
+    → redirect straight to the documents hub (its on-mount extract fills metadata)
 
 Active meeting layout
   MeetingToolbar (top: back, title + REC pill, sidebar seg, attendees, mic, end)
@@ -104,8 +113,8 @@ End meeting → /processing → /documents (hub)
 ## Data model (current)
 
 - `user_profiles` — onboarding gate (`onboarded_at`), brand fields (company_name, tagline, website, industry, voice_tones[], tone_prompt, signature_name, signature_title, brand_colors[], logo_url). Auto-created on auth signup.
-- `meetings` — `capture_mode ('browser'|'recall'|'both')`, `notes_json jsonb`, `attendees jsonb`, `context_summary`, `client_company`, `deal_status` (`draft|proposal_sent|won|lost`; `upcoming` legacy-only), `live_partial`, `recall_transcript_ready`, **`language`** + **`metadata_extracted_at`** (migration **`016`**). Deprecated (dropped in `020`): scheduled_at, selected_categories, attached/detected_product_ids, client_value, proposal_brief.
-- `transcript_segments` — `source ('browser'|'recall')`
+- `meetings` — `capture_mode ('browser'|'recall'|'both'|'upload')`, `notes_json jsonb`, `attendees jsonb`, `context_summary`, `client_company`, `deal_status` (`draft|proposal_sent|won|lost`; `upcoming` legacy-only), `live_partial`, `recall_transcript_ready`, **`language`** + **`metadata_extracted_at`** (migration **`016`**). Deprecated (dropped in `020`): scheduled_at, selected_categories, attached/detected_product_ids, client_value, proposal_brief.
+- `transcript_segments` — `source ('browser'|'recall'|'upload')`; 'upload' ranks with 'browser' as primary
 - `products` — id, user_id, name, category, description, price_amount, price_unit, currency, notes, active
 - **`meeting_documents`** (renamed from `proposals`, migration **`017`**) — `+doc_type ('minute'|'summary'|'proposal'|'notes')` (notes added in migration **`021`**), `+title`, `+language`, content_json, status, public_slug, shared_at, open tracking. Multiple rows per meeting.
 - `reference_proposals` — summary (matching) + **`full_text`** (migration **`018`**, injected for the matched reference; null for legacy uploads — matching falls back to summary).

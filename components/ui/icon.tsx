@@ -82,6 +82,12 @@ const PATHS: Record<string, React.ReactNode> = {
       <path d="M2.5 11.5h9" />
     </>
   ),
+  upload: (
+    <>
+      <path d="M7 9.5v-8M4 4.5l3-3 3 3" />
+      <path d="M2.5 11.5h9" />
+    </>
+  ),
   pen: <path d="M9.5 2.5l2 2L5 11l-2.5.5L3 9z" />,
   side: (
     <>

@@ -66,7 +66,7 @@ export async function gatherMeetingInputs(
     'meeting_type' | 'notes_json' | 'context_summary' | 'attendees' | 'client_company' | 'language'
   >
 
-  // Partitioned transcripts (browser = primary, recall = fallback)
+  // Partitioned transcripts (browser/upload = primary, recall = fallback)
   const { data: segments } = await supabase
     .from('transcript_segments')
     .select('speaker, text, source')
@@ -76,7 +76,10 @@ export async function gatherMeetingInputs(
   const rows = (segments as Pick<TranscriptSegment, 'speaker' | 'text' | 'source'>[] | null) ?? []
   const formatSeg = (s: { speaker: string | null; text: string }) =>
     `${s.speaker ?? 'Speaker'}: ${s.text}`
-  const browserTranscript = rows.filter((s) => s.source === 'browser').map(formatSeg).join('\n')
+  const browserTranscript = rows
+    .filter((s) => s.source === 'browser' || s.source === 'upload')
+    .map(formatSeg)
+    .join('\n')
   const recallTranscript = rows.filter((s) => s.source === 'recall').map(formatSeg).join('\n')
 
   const notesText = tiptapToText(m.notes_json)
