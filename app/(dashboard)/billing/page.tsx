@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { DOCUMENT_CREDIT_COST } from '@/lib/billing/plans'
+import { getSubscriptionDetails } from '@/lib/billing/subscription'
 import { CreditBalanceCard } from '@/components/billing/CreditBalanceCard'
 import { PricingSection } from '@/components/billing/PricingSection'
+import { SubscriptionCard } from '@/components/billing/SubscriptionCard'
 import { TransactionList } from '@/components/billing/TransactionList'
 import type { CreditTransaction } from '@/types'
 
@@ -16,7 +18,7 @@ export default async function BillingPage() {
   const [creditsRes, txRes] = await Promise.all([
     supabase
       .from('user_credits')
-      .select('balance, plan_id, subscription_status')
+      .select('balance, plan_id, subscription_status, stripe_subscription_id')
       .eq('user_id', user.id)
       .maybeSingle(),
     supabase
@@ -31,6 +33,12 @@ export default async function BillingPage() {
   const planId = creditsRes.data?.plan_id ?? null
   const subscriptionStatus = creditsRes.data?.subscription_status ?? null
   const transactions = (txRes.data ?? []) as CreditTransaction[]
+
+  // Read live from Stripe rather than mirroring the renewal date into our DB,
+  // where it would go stale between webhooks.
+  const subscription = await getSubscriptionDetails(creditsRes.data?.stripe_subscription_id)
+  const renewsAt = subscription?.renewsAt?.toISOString() ?? null
+  const cancelAtPeriodEnd = subscription?.cancelAtPeriodEnd ?? false
 
   return (
     <div className="pm-page lg-shell" style={{ padding: '28px 36px 40px' }}>
@@ -48,9 +56,19 @@ export default async function BillingPage() {
           balance={balance}
           planId={planId}
           subscriptionStatus={subscriptionStatus}
+          renewsAt={renewsAt}
+          cancelAtPeriodEnd={cancelAtPeriodEnd}
         />
         <PricingSection currentPlanId={planId} />
         <TransactionList transactions={transactions} />
+        {planId && subscription ? (
+          <SubscriptionCard
+            planId={planId}
+            balance={balance}
+            renewsAt={renewsAt}
+            cancelAtPeriodEnd={cancelAtPeriodEnd}
+          />
+        ) : null}
       </div>
     </div>
   )

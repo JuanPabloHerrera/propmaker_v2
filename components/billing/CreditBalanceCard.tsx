@@ -1,3 +1,4 @@
+import { format } from 'date-fns'
 import { Icon } from '@/components/ui/icon'
 import { DOCUMENT_CREDIT_COST, planById } from '@/lib/billing/plans'
 
@@ -5,10 +6,20 @@ interface CreditBalanceCardProps {
   balance: number
   planId: string | null
   subscriptionStatus: string | null
+  /** ISO date the current period ends — next billing date, or access-until when cancelling. */
+  renewsAt?: string | null
+  cancelAtPeriodEnd?: boolean
 }
 
-export function CreditBalanceCard({ balance, planId, subscriptionStatus }: CreditBalanceCardProps) {
+export function CreditBalanceCard({
+  balance,
+  planId,
+  subscriptionStatus,
+  renewsAt = null,
+  cancelAtPeriodEnd = false,
+}: CreditBalanceCardProps) {
   const plan = planId ? planById(planId) : null
+  const periodEnd = renewsAt ? format(new Date(renewsAt), 'MMM d, yyyy') : null
   const docsLeft = Math.floor(balance / DOCUMENT_CREDIT_COST)
   const low = balance < DOCUMENT_CREDIT_COST
 
@@ -55,6 +66,11 @@ export function CreditBalanceCard({ balance, planId, subscriptionStatus }: Credi
               : (subscriptionStatus ?? 'inactive')
             : 'No subscription'}
         </div>
+        {plan && periodEnd ? (
+          <div className="text-[11px]" style={{ color: 'var(--ink-3)' }}>
+            {cancelAtPeriodEnd ? `Ends ${periodEnd}` : `Renews ${periodEnd}`}
+          </div>
+        ) : null}
       </div>
     </div>
   )
