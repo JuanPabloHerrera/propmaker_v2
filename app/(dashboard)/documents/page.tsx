@@ -1,11 +1,16 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { DocumentsTable, type DocumentRow } from '@/components/dashboard/DocumentsTable'
+import {
+  DocumentsTable,
+  type DocumentRow,
+  type MeetingGroup,
+} from '@/components/dashboard/DocumentsTable'
 import { DOC_TYPE_LABELS, type DocType } from '@/types'
 import { cn } from '@/lib/utils'
 
-const PAGE_SIZE = 25
+// Grouped by meeting, so we paginate by meeting rather than by document.
+const PAGE_SIZE = 15
 const DOC_TYPES: DocType[] = ['minute', 'summary', 'proposal', 'notes']
 
 interface Search {
@@ -29,50 +34,77 @@ export default async function DocumentsPage({
     ? (params.type as DocType)
     : null
   const page = Math.max(1, parseInt(params.page ?? '1', 10) || 1)
-  const from = (page - 1) * PAGE_SIZE
-  const to = from + PAGE_SIZE - 1
 
+  // Pull every matching document (newest first), then group by meeting in memory.
+  // Grouping + meeting-date ordering can't be expressed in a single ranged query,
+  // so we page over the resulting meeting groups instead of over raw documents.
   let query = supabase
     .from('meeting_documents')
-    .select('id, meeting_id, doc_type, title, created_at', { count: 'exact' })
+    .select('id, meeting_id, doc_type, title, created_at')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
-    .range(from, to)
   if (activeType) query = query.eq('doc_type', activeType)
 
-  const { data: docsData, count } = await query
+  const { data: docsData } = await query
   const docs = (docsData ?? []) as Array<
     Pick<DocumentRow, 'id' | 'meeting_id' | 'doc_type' | 'title' | 'created_at'>
   >
 
-  // Second pass: pull the parent meetings for the docs on this page so we can
-  // show client/title without relying on a PostgREST embedding.
+  // Second pass: pull the parent meetings (incl. their date) so we can label and
+  // sort the groups without relying on a PostgREST embedding.
   const meetingIds = [...new Set(docs.map((d) => d.meeting_id))]
-  const meetingMap = new Map<string, { title: string | null; client_company: string | null }>()
+  const meetingMap = new Map<
+    string,
+    { title: string | null; client_company: string | null; created_at: string | null }
+  >()
   if (meetingIds.length) {
     const { data: meetingsData } = await supabase
       .from('meetings')
-      .select('id, title, client_company')
+      .select('id, title, client_company, created_at')
       .in('id', meetingIds)
     for (const m of meetingsData ?? []) {
       meetingMap.set(m.id as string, {
         title: (m.title as string | null) ?? null,
         client_company: (m.client_company as string | null) ?? null,
+        created_at: (m.created_at as string | null) ?? null,
       })
     }
   }
 
-  const documents: DocumentRow[] = docs.map((d) => {
-    const m = meetingMap.get(d.meeting_id)
-    return {
-      ...d,
-      meetingTitle: m?.title ?? null,
-      clientCompany: m?.client_company ?? null,
+  // Build one group per meeting. `docs` is already newest-first, so each group's
+  // documents keep that order as we push them.
+  const groupMap = new Map<string, MeetingGroup>()
+  for (const d of docs) {
+    let group = groupMap.get(d.meeting_id)
+    if (!group) {
+      const m = meetingMap.get(d.meeting_id)
+      group = {
+        meetingId: d.meeting_id,
+        meetingTitle: m?.title ?? null,
+        clientCompany: m?.client_company ?? null,
+        // Fall back to the newest document date if the meeting row is missing.
+        meetingDate: m?.created_at ?? d.created_at,
+        documents: [],
+      }
+      groupMap.set(d.meeting_id, group)
     }
-  })
+    group.documents.push({
+      ...d,
+      meetingTitle: group.meetingTitle,
+      clientCompany: group.clientCompany,
+    })
+  }
 
-  const total = count ?? 0
+  // Newest meeting first (ISO timestamps sort lexicographically).
+  const allGroups = [...groupMap.values()].sort((a, b) =>
+    b.meetingDate.localeCompare(a.meetingDate),
+  )
+
+  const total = allGroups.length
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const from = (page - 1) * PAGE_SIZE
+  const to = from + PAGE_SIZE - 1
+  const groups = allGroups.slice(from, from + PAGE_SIZE)
 
   return (
     <div className="pm-page" style={{ padding: '28px 36px 32px' }}>
@@ -101,12 +133,12 @@ export default async function DocumentsPage({
         </div>
         {total > 0 && (
           <div className="text-[11.5px]" style={{ color: 'var(--ink-3)' }}>
-            {from + 1}–{Math.min(to + 1, total)} of {total}
+            {from + 1}–{Math.min(to + 1, total)} of {total} meeting{total === 1 ? '' : 's'}
           </div>
         )}
       </div>
 
-      <DocumentsTable documents={documents} />
+      <DocumentsTable groups={groups} />
 
       {totalPages > 1 && (
         <Pagination page={page} totalPages={totalPages} type={activeType} />

@@ -17,27 +17,51 @@ export async function POST(request: Request) {
   const eventType: string = body.event ?? body.data?.event ?? ''
   const bot = body.data?.bot ?? body.bot ?? {}
   const botId: string = bot.id ?? ''
+  // We stamp the meeting id into the bot's metadata when creating it (createBot in
+  // lib/recall.ts), and Recall echoes it back on every webhook. Matching on this is
+  // more reliable than the bot id — it survives any payload-shape quirk in bot-id
+  // extraction and any race where recall_bot_id hasn't been persisted yet.
+  const metaMeetingId: string = bot.metadata?.meeting_id ?? ''
 
-  console.log(`[webhook] event=${eventType} botId=${botId} keys=${Object.keys(body).join(',')}`)
+  console.log(`[webhook] event=${eventType} botId=${botId} metaMeetingId=${metaMeetingId} keys=${Object.keys(body).join(',')}`)
   console.log(`[webhook] body=${JSON.stringify(body).slice(0, 500)}`)
 
-  if (!botId) {
-    console.warn(`[webhook] no botId in payload — event=${eventType}`)
+  if (!botId && !metaMeetingId) {
+    console.warn(`[webhook] no botId or meeting_id in payload — event=${eventType}`)
     return NextResponse.json({ ok: true })
   }
 
-  // Find the meeting linked to this bot
-  const { data: meeting } = await supabase
-    .from('meetings')
-    .select('id, meeting_type')
-    .eq('recall_bot_id', botId)
-    .single()
+  // Resolve the meeting: prefer recall_bot_id, fall back to the meeting id carried
+  // in bot metadata so a bot-id mismatch alone never drops the transcript.
+  async function resolveMeeting() {
+    if (botId) {
+      const { data } = await supabase
+        .from('meetings')
+        .select('id, meeting_type')
+        .eq('recall_bot_id', botId)
+        .maybeSingle()
+      if (data) return data
+    }
+    if (metaMeetingId) {
+      const { data } = await supabase
+        .from('meetings')
+        .select('id, meeting_type')
+        .eq('id', metaMeetingId)
+        .maybeSingle()
+      if (data) return data
+    }
+    return null
+  }
+
+  const meeting = await resolveMeeting()
 
   if (!meeting) {
     // A webhook that reaches us but matches no meeting means the bot was created
     // against a different deployment/region than this one — surface it instead of
     // silently 200-ing, so a misrouted webhook is visible in logs.
-    console.warn(`[webhook] no meeting for botId=${botId} — event=${eventType}`)
+    console.warn(
+      `[webhook] no meeting resolved — botId=${botId} metaMeetingId=${metaMeetingId} event=${eventType}`,
+    )
     return NextResponse.json({ ok: true })
   }
 
@@ -68,13 +92,16 @@ export async function POST(request: Request) {
       const startTime: number =
         words[0]?.start_timestamp?.relative ?? words[0]?.start_time ?? 0
 
-      await supabase.from('transcript_segments').insert({
+      const { error: insertErr } = await supabase.from('transcript_segments').insert({
         meeting_id: meetingId,
         speaker,
         text,
         start_time: startTime,
         source: 'recall',
       })
+      if (insertErr) {
+        console.error(`[webhook] segment insert failed meeting=${meetingId}: ${insertErr.message}`)
+      }
 
       // The finalized utterance is now a segment — clear the live interim line.
       await supabase.from('meetings').update({ live_partial: null }).eq('id', meetingId)
@@ -143,7 +170,10 @@ export async function POST(request: Request) {
           start_time: seg.words[0]?.start_time ?? 0,
           source: 'recall' as const,
         }))
-        await supabase.from('transcript_segments').insert(rows)
+        const { error: doneInsertErr } = await supabase.from('transcript_segments').insert(rows)
+        if (doneInsertErr) {
+          console.error(`[webhook] transcript.done insert failed meeting=${meetingId}: ${doneInsertErr.message}`)
+        }
 
         const fullText = rows.map((r) => `${r.speaker}: ${r.text}`).join('\n')
         after(async () => {

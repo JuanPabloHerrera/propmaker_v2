@@ -51,28 +51,15 @@ export interface RecallBot {
   }>
 }
 
-// Public base URL that Recall posts transcript webhooks to. This MUST be a
-// publicly reachable host with no auth gate in front of it — Recall's inbound
-// POSTs are unauthenticated. Order of preference:
-//   1. RECALL_WEBHOOK_BASE_URL — explicit override, wins everywhere.
-//   2. NEXT_PUBLIC_APP_URL — the public custom domain (app.propmaker.co in prod).
-//      Trusted on Vercel because prod sets it to the real domain; locally it may
-//      be an ngrok tunnel, which is exactly what dev wants.
-//   3. VERCEL_PROJECT_PRODUCTION_URL — last resort. NOTE: this is the *.vercel.app
-//      domain, which is behind Vercel Deployment Protection (SSO) when that's
-//      enabled — Recall's webhooks get a 401 and never arrive. Prefer the custom
-//      domain above; only fall back here when NEXT_PUBLIC_APP_URL is unset.
+// Public base URL that Recall posts transcript webhooks to. On Vercel, always
+// use the stable production domain so webhooks reach the live deployment even if
+// NEXT_PUBLIC_APP_URL is stale (e.g. a leftover ngrok dev tunnel). Locally,
+// VERCEL_PROJECT_PRODUCTION_URL is absent so dev falls back to NEXT_PUBLIC_APP_URL.
 function publicBaseUrl(): string {
-  const explicit = process.env.RECALL_WEBHOOK_BASE_URL?.trim()
-  if (explicit) return explicit.replace(/\/$/, '')
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
-  if (appUrl) return appUrl.replace(/\/$/, '')
-
   if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
     return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
   }
-  return ''
+  return process.env.NEXT_PUBLIC_APP_URL ?? ''
 }
 
 export async function createBot(meetingUrl: string, meetingId: string): Promise<RecallBot> {
