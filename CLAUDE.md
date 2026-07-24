@@ -44,7 +44,6 @@ Note: due to spaces in the directory name, npm `.bin` symlinks don't work — us
 ## App flow (mirrors the instant-join pivot)
 
 ```
-01 Onboarding         /welcome                     (auth group, no sidebar)
 02 Profile            /profile
 03 Resources          /resources                   (Services + Reference files, stacked)
 04 Dashboard          /
@@ -59,7 +58,7 @@ Note: due to spaces in the directory name, npm `.bin` symlinks don't work — us
    Legacy redirect    /meetings/[id]/proposal → newest proposal doc (or the hub)
 ```
 
-The dashboard layout gates onboarding: if `user_profiles.onboarded_at IS NULL`, redirects to `/welcome`.
+Sign-in lands straight on the dashboard — there is no onboarding screen or gate.
 
 ## Architecture
 
@@ -112,7 +111,7 @@ End meeting → /processing → /documents (hub)
 
 ## Data model (current)
 
-- `user_profiles` — onboarding gate (`onboarded_at`), brand fields (company_name, tagline, website, industry, voice_tones[], tone_prompt, signature_name, signature_title, brand_colors[], logo_url). Auto-created on auth signup.
+- `user_profiles` — brand fields (company_name, tagline, website, industry, voice_tones[], tone_prompt, signature_name, signature_title, brand_colors[], logo_url). Auto-created on auth signup.
 - `meetings` — `capture_mode ('browser'|'recall'|'both'|'upload')`, `notes_json jsonb`, `attendees jsonb`, `context_summary`, `client_company`, `deal_status` (`draft|proposal_sent|won|lost`; `upcoming` legacy-only), `live_partial`, `recall_transcript_ready`, **`language`** + **`metadata_extracted_at`** (migration **`016`**). Deprecated (dropped in `020`): scheduled_at, selected_categories, attached/detected_product_ids, client_value, proposal_brief.
 - `transcript_segments` — `source ('browser'|'recall'|'upload')`; 'upload' ranks with 'browser' as primary
 - `products` — id, user_id, name, category, description, price_amount, price_unit, currency, notes, active
@@ -146,11 +145,10 @@ End meeting → /processing → /documents (hub)
 - `proxy.ts` — auth guard
 - `app/globals.css` — design tokens (sage `--accent-base #4d8a6b`, warm canvas, `.glass` recipes, `.doc` typography, chrome utilities)
 - `app/layout.tsx` — Geist sans + mono via `next/font`
-- `app/(dashboard)/layout.tsx` — onboarding gate + `PMSidebar`
-- `app/(auth)/welcome/page.tsx` — onboarding
+- `app/(dashboard)/layout.tsx` — auth guard + `PMSidebar`
 - `app/p/[slug]/page.tsx` — public document view (no auth, RLS via `public_slug IS NOT NULL`, all doc types)
 - `app/api/webhooks/recall/route.ts` — tags inserts as `source='recall'`; triggers extraction on transcript.done
-- `app/api/profile/route.ts`, `app/api/profile/onboard/route.ts` — profile + onboarding
+- `app/api/profile/route.ts` — profile
 - `components/layout/PMSidebar.tsx` — Workspace + Library sections, counts via `getSidebarCounts`
 - `components/ui/{icon,pill,avatar-initials,wave,glass-card,segmented,aurora-orb,checklist}.tsx` — design primitives
 - `components/meeting/{MeetingToolbar,TranscriptPanel,NotesPad,NotesToolbar,LiveChatPanel,CollapsiblePanel,AudioCaptureButton,useMicCapture}.tsx` — active meeting (NotesPad has `variant='live'|'card'`, formatting toolbar, save-status footer, keepalive flush on unmount)
@@ -163,7 +161,6 @@ End meeting → /processing → /documents (hub)
 - **Sage accent** — `--accent-base: #4d8a6b`. Never reintroduce the violet `#7c4cf0` from the design's bundle source; the project's canonical accent is sage.
 - **Liquid Glass** — `.glass` (40px blur, 180% saturate) / `.glass-strong` (60px blur, 200%) / `.glass-soft`. The `.lg-shell` class provides the gradient backdrop. Cards use `.card` / `.card-accent`.
 - **Apple Liquid Glass typography** — `.doc` for proposal + notes (Tiptap content gets `class="doc"`), `.pm-eyebrow` for section labels (mono, 10.5px, uppercase, tracking-wide), `.pm-h1` for page titles, `.mono-num` for tabular numerics.
-- **Onboarding gate** — `app/(dashboard)/layout.tsx` redirects to `/welcome` when `user_profiles.onboarded_at IS NULL`. Skipping calls `POST /api/profile/onboard`.
 - **Prompt caching** — the generators cache the static instructions and catalog blocks via `cache_control: { type: 'ephemeral' }`. Don't make those blocks dynamic per-call: the language directive and the matched-reference text live in the per-call USER content, never in the cached system blocks.
 - **Transcript source partitioning** — never delete `transcript_segments` without filtering on `source`; the webhook and sync routes only delete `source='recall'` rows so the browser-captured stream is preserved.
 - **Print stylesheet** — `@media print` in `globals.css` flattens glass + drops sidebar/toolbars. Use `.pm-no-print` on any UI chrome that shouldn't appear in PDF exports. Share screen offers `window.print()` via the public `/p/[slug]?print=1` route.

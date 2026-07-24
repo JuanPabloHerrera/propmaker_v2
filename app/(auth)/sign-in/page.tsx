@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { AuthErrorToast } from '@/components/auth/AuthErrorToast'
 import { PasswordField } from '@/components/ui/password-field'
 import { toast } from 'sonner'
 
@@ -29,6 +30,9 @@ export default function SignInPage() {
 
   return (
     <div className="min-h-screen lg-shell flex items-center justify-center px-4">
+      <Suspense fallback={null}>
+        <AuthErrorToast />
+      </Suspense>
       <div className="w-full" style={{ maxWidth: 440 }}>
         <div className="flex flex-col items-center text-center" style={{ marginBottom: 24 }}>
           <div

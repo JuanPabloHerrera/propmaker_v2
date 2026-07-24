@@ -24,12 +24,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const { data: profile } = await supabase
     .from('user_profiles')
-    .select('full_name, onboarded_at')
+    .select('full_name')
     .eq('user_id', user.id)
     .maybeSingle()
-
-  // Onboarding gate: first-run users land on /welcome.
-  if (!profile?.onboarded_at) redirect('/welcome')
 
   const counts = await getSidebarCounts(user.id)
   const email = user.email ?? ''

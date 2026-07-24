@@ -16,8 +16,8 @@ export default async function ProfilePage() {
     .eq('user_id', user.id)
     .maybeSingle()
 
-  // Profile row is created by the auth trigger; the layout has already
-  // redirected non-onboarded users to /welcome, so we can trust it exists.
+  // Profile row is created by the auth trigger; this fallback only covers
+  // the rare case where the trigger hasn't run yet.
   const safe: UserProfile = profile ?? {
     user_id: user.id,
     full_name: null,
