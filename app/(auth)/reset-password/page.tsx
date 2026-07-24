@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { PasswordField } from '@/components/ui/password-field'
 import { toast } from 'sonner'
 
 export default function ResetPasswordPage() {
@@ -146,9 +147,8 @@ export default function ResetPasswordPage() {
                 <label htmlFor="password" className="field-label">
                   New password
                 </label>
-                <input
+                <PasswordField
                   id="password"
-                  type="password"
                   autoComplete="new-password"
                   placeholder="At least 8 characters"
                   value={password}
@@ -160,16 +160,14 @@ export default function ResetPasswordPage() {
                   minLength={8}
                   aria-invalid={fieldError ? 'true' : 'false'}
                   aria-describedby={fieldError ? 'password-error' : undefined}
-                  className="field"
                 />
               </div>
               <div>
                 <label htmlFor="confirm" className="field-label">
                   Confirm password
                 </label>
-                <input
+                <PasswordField
                   id="confirm"
-                  type="password"
                   autoComplete="new-password"
                   placeholder="Repeat the password"
                   value={confirm}
@@ -181,7 +179,6 @@ export default function ResetPasswordPage() {
                   minLength={8}
                   aria-invalid={fieldError ? 'true' : 'false'}
                   aria-describedby={fieldError ? 'password-error' : undefined}
-                  className="field"
                 />
               </div>
               {fieldError && (

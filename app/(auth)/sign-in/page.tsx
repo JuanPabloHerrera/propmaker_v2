@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { PasswordField } from '@/components/ui/password-field'
 import { toast } from 'sonner'
 
 export default function SignInPage() {
@@ -106,15 +107,13 @@ export default function SignInPage() {
                   Forgot password?
                 </Link>
               </div>
-              <input
+              <PasswordField
                 id="password"
-                type="password"
                 autoComplete="current-password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="field"
               />
             </div>
             <button
