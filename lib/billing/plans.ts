@@ -29,6 +29,9 @@
 /** Credits consumed by generating one document (any doc_type). */
 export const DOCUMENT_CREDIT_COST = 97
 
+/** Minimum balance required to START a meeting — enough to generate at least one document. */
+export const MEETING_START_MIN_CREDITS = DOCUMENT_CREDIT_COST
+
 /** Free credits granted at signup. Mirrored in supabase/migrations/022_credits.sql — keep in sync. */
 export const SIGNUP_GRANT = 200
 

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { MEETING_START_MIN_CREDITS } from '@/lib/billing/plans'
 
 export async function GET() {
   const supabase = await createClient()
@@ -28,6 +29,27 @@ export async function POST(request: Request) {
   }
   if (mode === 'online' && !meeting_url) {
     return NextResponse.json({ error: 'Meeting URL required for online meetings' }, { status: 400 })
+  }
+
+  // Authoritative gate: a meeting is only worth starting if the user can turn it
+  // into at least one document afterwards. Mirrors the documents route's 402
+  // contract so the client can reuse the same insufficient-credits handling.
+  const { data: creditRow } = await supabase
+    .from('user_credits')
+    .select('balance')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  const balance = creditRow?.balance ?? 0
+  if (balance < MEETING_START_MIN_CREDITS) {
+    return NextResponse.json(
+      {
+        error: 'Not enough credits to start a meeting.',
+        code: 'INSUFFICIENT_CREDITS',
+        balance,
+        required: MEETING_START_MIN_CREDITS,
+      },
+      { status: 402 },
+    )
   }
 
   // Placeholder title until post-meeting metadata extraction names the meeting

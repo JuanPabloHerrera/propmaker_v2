@@ -63,11 +63,12 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
       matcher: (p) => p.startsWith('/resources'),
     },
     {
-      id: 'proposals',
-      label: 'Proposals',
-      href: '/?filter=proposals',
+      id: 'documents',
+      label: 'Documents',
+      href: '/documents',
       icon: 'doc',
-      badge: counts.proposals || undefined,
+      badge: counts.documents || undefined,
+      matcher: (p) => p.startsWith('/documents'),
     },
     {
       id: 'meetings',

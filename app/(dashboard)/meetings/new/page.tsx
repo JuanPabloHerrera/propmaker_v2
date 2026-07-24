@@ -7,6 +7,8 @@ import { toast } from 'sonner'
 import { Icon } from '@/components/ui/icon'
 import { Pill } from '@/components/ui/pill'
 import { FieldError } from '@/components/ui/field-error'
+import { InsufficientCreditsModal } from '@/components/billing/InsufficientCreditsModal'
+import { MEETING_START_MIN_CREDITS } from '@/lib/billing/plans'
 
 type JoinMode = 'local' | 'online'
 
@@ -20,6 +22,9 @@ export default function NewMeetingPage() {
   // Remembers a meeting created in a prior attempt whose bot failed to join, so
   // retrying reuses it instead of creating duplicate meetings.
   const [createdMeetingId, setCreatedMeetingId] = React.useState<string | null>(null)
+  // Shown when the balance can't cover at least one document (meeting-start gate).
+  const [insufficientOpen, setInsufficientOpen] = React.useState(false)
+  const [creditBalance, setCreditBalance] = React.useState(0)
   const urlRef = React.useRef<HTMLInputElement>(null)
 
   async function join(selected: JoinMode) {
@@ -36,6 +41,20 @@ export default function NewMeetingPage() {
         return
       }
     }
+
+    // Gate before creating anything: a meeting is only worth starting if it can
+    // become at least one document afterwards. The authoritative check is the
+    // 402 from POST /api/meetings below; this is the fast UX path.
+    const creditsRes = await fetch('/api/credits')
+      .then((r) => r.json())
+      .catch(() => null)
+    const balance = creditsRes?.balance ?? 0
+    if (balance < MEETING_START_MIN_CREDITS) {
+      setCreditBalance(balance)
+      setInsufficientOpen(true)
+      return
+    }
+
     setLoading(true)
 
     let meetingId = createdMeetingId
@@ -51,6 +70,12 @@ export default function NewMeetingPage() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setLoading(false)
+        // Credits drained between the pre-check and creation — surface the same modal.
+        if (data.code === 'INSUFFICIENT_CREDITS') {
+          setCreditBalance(data.balance ?? 0)
+          setInsufficientOpen(true)
+          return
+        }
         toast.error(data.error ?? 'Failed to create meeting')
         return
       }
@@ -198,6 +223,13 @@ export default function NewMeetingPage() {
           Setting up your meeting…
         </p>
       )}
+
+      <InsufficientCreditsModal
+        open={insufficientOpen}
+        balance={creditBalance}
+        context="meeting"
+        onClose={() => setInsufficientOpen(false)}
+      />
     </div>
   )
 }

@@ -21,7 +21,10 @@ export async function POST(request: Request) {
   console.log(`[webhook] event=${eventType} botId=${botId} keys=${Object.keys(body).join(',')}`)
   console.log(`[webhook] body=${JSON.stringify(body).slice(0, 500)}`)
 
-  if (!botId) return NextResponse.json({ ok: true })
+  if (!botId) {
+    console.warn(`[webhook] no botId in payload — event=${eventType}`)
+    return NextResponse.json({ ok: true })
+  }
 
   // Find the meeting linked to this bot
   const { data: meeting } = await supabase
@@ -30,7 +33,13 @@ export async function POST(request: Request) {
     .eq('recall_bot_id', botId)
     .single()
 
-  if (!meeting) return NextResponse.json({ ok: true })
+  if (!meeting) {
+    // A webhook that reaches us but matches no meeting means the bot was created
+    // against a different deployment/region than this one — surface it instead of
+    // silently 200-ing, so a misrouted webhook is visible in logs.
+    console.warn(`[webhook] no meeting for botId=${botId} — event=${eventType}`)
+    return NextResponse.json({ ok: true })
+  }
 
   const meetingId: string = meeting.id
 

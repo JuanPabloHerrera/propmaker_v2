@@ -10,9 +10,17 @@ interface InsufficientCreditsModalProps {
   open: boolean
   balance: number
   onClose: () => void
+  /** Which action was blocked — drives the copy. Defaults to 'document'. */
+  context?: 'document' | 'meeting'
 }
 
-export function InsufficientCreditsModal({ open, balance, onClose }: InsufficientCreditsModalProps) {
+export function InsufficientCreditsModal({
+  open,
+  balance,
+  onClose,
+  context = 'document',
+}: InsufficientCreditsModalProps) {
+  const title = context === 'meeting' ? 'Not enough credits to start a meeting' : 'Not enough credits'
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="sm:max-w-sm">
@@ -31,13 +39,15 @@ export function InsufficientCreditsModal({ open, balance, onClose }: Insufficien
             <Icon name="sparkle" size={20} />
           </div>
           <DialogTitle className="text-[15px] font-semibold" style={{ color: 'var(--ink-1)' }}>
-            Not enough credits
+            {title}
           </DialogTitle>
           <p className="text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
-            Generating a document costs{' '}
+            {context === 'meeting' ? 'Starting a meeting needs ' : 'Generating a document costs '}
             <span className="mono-num font-medium">{DOCUMENT_CREDIT_COST}</span> credits and you
             have <span className="mono-num font-medium">{formatNumber(balance)}</span> left.
-            Top up or subscribe to keep generating.
+            {context === 'meeting'
+              ? ' Top up or subscribe to begin.'
+              : ' Top up or subscribe to keep generating.'}
           </p>
           <div className="flex gap-2 mt-2 w-full">
             <button
