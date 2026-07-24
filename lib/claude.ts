@@ -121,11 +121,11 @@ async function runReferenceSummary(content: Anthropic.MessageParam['content']): 
   const msg = await anthropic.messages.create({
     model: 'claude-sonnet-5',
     max_tokens: 2048,
+    thinking: { type: 'disabled' },
     system: REFERENCE_SUMMARY_SYSTEM,
     messages: [{ role: 'user', content }],
   })
-  const text = msg.content[0]?.type === 'text' ? msg.content[0].text : ''
-  return text.trim().slice(0, MAX_REFERENCE_SUMMARY_CHARS)
+  return textFromMessage(msg).trim().slice(0, MAX_REFERENCE_SUMMARY_CHARS)
 }
 
 export function summarizeReferenceText(text: string): Promise<string> {
@@ -834,6 +834,7 @@ Your behavior in this turn:
   return anthropic.messages.stream({
     model: 'claude-sonnet-5',
     max_tokens: mode === 'apply' ? 12288 : 2048,
+    thinking: { type: 'disabled' },
     system: refineSystem,
     messages,
   })
