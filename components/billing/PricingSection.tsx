@@ -1,16 +1,50 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { DOCUMENT_CREDIT_COST, PACKS, PLANS } from '@/lib/billing/plans'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { DOCUMENT_CREDIT_COST, PACKS, PLANS, planById } from '@/lib/billing/plans'
 import { cn } from '@/lib/utils'
 
 interface PricingSectionProps {
   currentPlanId: string | null
+  /**
+   * True when the user has a live subscription, so picking another tier must
+   * SWITCH the existing one. Starting a second Checkout would leave them
+   * paying for two concurrent subscriptions.
+   */
+  canSwitchPlan?: boolean
 }
 
-export function PricingSection({ currentPlanId }: PricingSectionProps) {
+export function PricingSection({ currentPlanId, canSwitchPlan = false }: PricingSectionProps) {
+  const router = useRouter()
   const [busy, setBusy] = React.useState<string | null>(null)
+  const [switchingTo, setSwitchingTo] = React.useState<string | null>(null)
+
+  const currentPlan = currentPlanId ? planById(currentPlanId) : null
+  const targetPlan = switchingTo ? planById(switchingTo) : null
+
+  async function changePlan(planId: string) {
+    if (busy) return
+    setBusy(planId)
+    try {
+      const res = await fetch('/api/billing/subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'change', planId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Could not change plan')
+      setSwitchingTo(null)
+      toast.success(`Switched to ${planById(planId)?.name ?? 'the new plan'}.`)
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not change plan')
+    } finally {
+      setBusy(null)
+    }
+  }
 
   async function checkout(kind: 'plan' | 'pack', id: string) {
     if (busy) return
@@ -80,7 +114,9 @@ export function PricingSection({ currentPlanId }: PricingSectionProps) {
                 <button
                   type="button"
                   disabled={busy !== null || isCurrent}
-                  onClick={() => checkout('plan', plan.id)}
+                  onClick={() =>
+                    canSwitchPlan ? setSwitchingTo(plan.id) : checkout('plan', plan.id)
+                  }
                   className="mt-3 rounded-[8px] text-[12px] font-medium transition-opacity disabled:opacity-60"
                   style={{
                     padding: '7px 0',
@@ -89,7 +125,15 @@ export function PricingSection({ currentPlanId }: PricingSectionProps) {
                     cursor: busy || isCurrent ? 'default' : 'pointer',
                   }}
                 >
-                  {isCurrent ? 'Current plan' : busy === plan.id ? 'Opening…' : 'Subscribe'}
+                  {isCurrent
+                    ? 'Current plan'
+                    : busy === plan.id
+                      ? canSwitchPlan
+                        ? 'Switching…'
+                        : 'Opening…'
+                      : canSwitchPlan
+                        ? 'Switch to this'
+                        : 'Subscribe'}
                 </button>
               </div>
             )
@@ -142,6 +186,58 @@ export function PricingSection({ currentPlanId }: PricingSectionProps) {
           ))}
         </div>
       </div>
+
+      <Dialog
+        open={switchingTo !== null}
+        onOpenChange={(open) => !open && !busy && setSwitchingTo(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <div className="flex flex-col gap-2 pt-1">
+            <DialogTitle className="text-[15px] font-semibold" style={{ color: 'var(--ink-1)' }}>
+              Switch to {targetPlan?.name}?
+            </DialogTitle>
+            <p className="text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
+              {currentPlan ? `You're on ${currentPlan.name} ($${currentPlan.priceUsd}/mo). ` : ''}
+              You won&apos;t be charged or refunded today, and your current credits stay as they
+              are. From your next renewal you&apos;ll be billed{' '}
+              <span className="mono-num font-medium">${targetPlan?.priceUsd}</span>/mo and receive{' '}
+              <span className="mono-num font-medium">
+                {targetPlan?.monthlyCredits.toLocaleString()}
+              </span>{' '}
+              credits each month.
+            </p>
+            <div className="flex gap-2 mt-2">
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => setSwitchingTo(null)}
+                className="flex-1 rounded-[8px] text-[12px] font-medium"
+                style={{
+                  padding: '8px 0',
+                  background: 'rgba(28,24,20,0.06)',
+                  color: 'var(--ink-2)',
+                }}
+              >
+                Keep {currentPlan?.name ?? 'current'}
+              </button>
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => switchingTo && changePlan(switchingTo)}
+                className="flex-1 rounded-[8px] text-[12px] font-medium"
+                style={{
+                  padding: '8px 0',
+                  background: 'var(--accent-base)',
+                  color: '#fff',
+                  opacity: busy ? 0.6 : 1,
+                }}
+              >
+                {busy ? 'Switching…' : 'Switch plan'}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

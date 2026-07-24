@@ -59,7 +59,10 @@ export default async function BillingPage() {
           renewsAt={renewsAt}
           cancelAtPeriodEnd={cancelAtPeriodEnd}
         />
-        <PricingSection currentPlanId={planId} />
+        <PricingSection
+          currentPlanId={planId}
+          canSwitchPlan={Boolean(subscription && !cancelAtPeriodEnd)}
+        />
         <TransactionList transactions={transactions} />
         {planId && subscription ? (
           <SubscriptionCard

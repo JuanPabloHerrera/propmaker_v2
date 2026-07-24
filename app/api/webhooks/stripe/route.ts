@@ -154,10 +154,20 @@ export async function POST(request: Request) {
               ? 'active'
               : subscription.status
 
+        // On update, track the plan the subscription now carries — a mid-cycle
+        // plan change swaps the price here and issues no invoice (proration is
+        // 'none'), so without this the stored plan_id would stay stale until
+        // the next renewal. Credits still only change on subscription_cycle.
+        const changedPlan =
+          event.type === 'customer.subscription.updated'
+            ? planByPriceId(subscription.items?.data?.[0]?.price?.id)
+            : null
+
         await service
           .from('user_credits')
           .update({
             subscription_status: status,
+            ...(changedPlan ? { plan_id: changedPlan.id } : {}),
             ...(event.type === 'customer.subscription.deleted'
               ? { plan_id: null, stripe_subscription_id: null }
               : {}),
