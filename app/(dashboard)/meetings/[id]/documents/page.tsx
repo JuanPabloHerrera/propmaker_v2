@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { tiptapToText } from '@/lib/tiptap'
 import { Icon } from '@/components/ui/icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AgentWorkingOverlay } from '@/components/documents/AgentWorkingOverlay'
@@ -105,6 +106,11 @@ export default function DocumentsHubPage() {
     )
   }
 
+  // The notes document is built ONLY from the consultant's own typed notes, so
+  // it can't be generated for a meeting that has none (uploads, or calls where
+  // nobody took notes). Gate the card instead of letting the click 422.
+  const hasNotes = tiptapToText(meeting.notes_json).trim().length > 0
+
   return (
     <div className="pm-page" style={{ padding: '28px 36px 32px' }}>
       <AgentWorkingOverlay
@@ -138,31 +144,41 @@ export default function DocumentsHubPage() {
       </p>
 
       <div className="grid grid-cols-2 gap-4">
-        {GENERATORS.map((g) => (
-          <button
-            key={g.type}
-            type="button"
-            disabled={generating !== null}
-            onClick={() => generate(g.type)}
-            className="card text-left"
-            style={{
-              borderRadius: 14,
-              padding: '18px 16px',
-              cursor: generating ? 'default' : 'pointer',
-              opacity: generating && generating !== g.type ? 0.55 : 1,
-            }}
-          >
-            <div className="mb-2">
-              <Icon name={g.icon} size={18} />
-            </div>
-            <div className="text-[13.5px] font-semibold" style={{ color: 'var(--ink-1)' }}>
-              {generating === g.type ? 'Generating…' : DOC_TYPE_LABELS[g.type]}
-            </div>
-            <div className="text-[11.5px] mt-1.5" style={{ color: 'var(--ink-3)' }}>
-              {g.blurb}
-            </div>
-          </button>
-        ))}
+        {GENERATORS.map((g) => {
+          // Notes can only be built from the user's own notes — disable the card
+          // when there are none rather than letting the request 422.
+          const needsNotes = g.type === 'notes' && !hasNotes
+          const dimmed = needsNotes || (generating != null && generating !== g.type)
+          return (
+            <button
+              key={g.type}
+              type="button"
+              disabled={generating !== null || needsNotes}
+              onClick={() => {
+                if (!needsNotes) generate(g.type)
+              }}
+              className="card text-left"
+              style={{
+                borderRadius: 14,
+                padding: '18px 16px',
+                cursor: generating || needsNotes ? 'default' : 'pointer',
+                opacity: dimmed ? 0.55 : 1,
+              }}
+            >
+              <div className="mb-2">
+                <Icon name={g.icon} size={18} />
+              </div>
+              <div className="text-[13.5px] font-semibold" style={{ color: 'var(--ink-1)' }}>
+                {generating === g.type ? 'Generating…' : DOC_TYPE_LABELS[g.type]}
+              </div>
+              <div className="text-[11.5px] mt-1.5" style={{ color: 'var(--ink-3)' }}>
+                {needsNotes
+                  ? 'Add notes during the meeting to enable this — the notes document is built only from your own notes.'
+                  : g.blurb}
+              </div>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
