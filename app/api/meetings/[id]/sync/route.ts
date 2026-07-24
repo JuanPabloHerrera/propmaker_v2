@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getBotTranscript } from '@/lib/recall'
-import { generateSuggestions } from '@/lib/claude'
+import { generateSuggestions, isAIUnavailableError } from '@/lib/claude'
 import { NextResponse } from 'next/server'
 import type { MeetingType } from '@/types'
 
@@ -56,10 +56,25 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     .update({ recall_transcript_ready: true })
     .eq('id', id)
 
-  // Generate fresh suggestions from full transcript
+  // Generate fresh suggestions from the full transcript. Best-effort: the
+  // transcript is already persisted above, so an AI outage (spend cap / rate
+  // limit) must not fail the sync — we just skip suggestions this round.
   const fullText = rows.map((r) => `${r.speaker}: ${r.text}`).join('\n')
-  const questions = await generateSuggestions(fullText, meeting.meeting_type as MeetingType)
-  await serviceSupabase.from('suggestions').insert({ meeting_id: id, questions })
+  let suggestionsSkipped = false
+  try {
+    const questions = await generateSuggestions(fullText, meeting.meeting_type as MeetingType)
+    await serviceSupabase.from('suggestions').insert({ meeting_id: id, questions })
+  } catch (err) {
+    suggestionsSkipped = true
+    if (isAIUnavailableError(err)) {
+      console.warn('[meetings/sync] suggestions skipped — AI temporarily unavailable')
+    } else {
+      console.error(
+        '[meetings/sync] suggestions failed:',
+        err instanceof Error ? err.message : err,
+      )
+    }
+  }
 
-  return NextResponse.json({ synced: rows.length })
+  return NextResponse.json({ synced: rows.length, suggestionsSkipped })
 }

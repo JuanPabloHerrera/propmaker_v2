@@ -84,11 +84,25 @@ export async function runMeetingExtraction(
   const { tiptapToText } = await import('@/lib/tiptap')
   const notesText = tiptapToText(m.notes_json)
 
-  const extracted = await extractMeetingMetadata({
-    browserTranscript,
-    recallTranscript,
-    notesText,
-  })
+  let extracted: Awaited<ReturnType<typeof extractMeetingMetadata>>
+  try {
+    extracted = await extractMeetingMetadata({
+      browserTranscript,
+      recallTranscript,
+      notesText,
+    })
+  } catch (err) {
+    // Extraction failed (e.g. AI temporarily unavailable — spend cap/rate limit).
+    // Release the guard we claimed above so a later trigger (processing-screen
+    // fallback, webhook, or a manual retry) can re-attempt, instead of leaving
+    // this meeting's metadata permanently blank.
+    await supabase.from('meetings').update({ metadata_extracted_at: null }).eq('id', meetingId)
+    console.warn(
+      `[extract-meeting] extraction failed for ${meetingId}; guard released for retry:`,
+      err instanceof Error ? err.message : err,
+    )
+    return
+  }
 
   // Best-effort Recall meeting title — platform-dependent and usually absent.
   let recallTitle: string | null = null

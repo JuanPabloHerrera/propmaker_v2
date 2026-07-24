@@ -12,6 +12,21 @@ export const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
+/**
+ * True when an Anthropic error means the AI is temporarily unavailable rather
+ * than a caller bug — the org hit its spend/usage limit (400 with a usage-limit
+ * message), got rate limited (429), or the API is overloaded (529/500). Routes
+ * should surface a 503 for these instead of a raw 500, and best-effort callers
+ * (suggestions, extraction) should skip gracefully and allow a later retry.
+ */
+export function isAIUnavailableError(err: unknown): boolean {
+  if (err instanceof Anthropic.APIError) {
+    if (err.status === 429 || err.status === 529 || err.status === 500) return true
+    if (err.status === 400 && /usage limit/i.test(err.message ?? '')) return true
+  }
+  return false
+}
+
 // Soft cap to keep prompts bounded. Beyond this, the proposal agent gets a warning slice.
 const MAX_CATALOG_ITEMS = 100
 
@@ -305,7 +320,11 @@ Ground everything in the transcript; use null/[] when a field is genuinely uncle
       context_summary: str(o.context_summary),
       language,
     }
-  } catch {
+  } catch (err) {
+    // AI-unavailable (spend cap / rate limit / overload) must propagate so the
+    // caller can release its extraction guard and retry later — returning empty
+    // here would let the idempotency claim mark the meeting permanently blank.
+    if (isAIUnavailableError(err)) throw err
     return empty
   }
 }

@@ -7,6 +7,7 @@ import {
   generateProposal,
   generateNotesDocument,
   matchReferenceProposal,
+  isAIUnavailableError,
 } from '@/lib/claude'
 import { markdownToTiptap } from '@/lib/markdown'
 import { NextResponse } from 'next/server'
@@ -225,6 +226,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ ...data, credit_balance: newBalance }, { status: 201 })
   } catch (err) {
+    // AI temporarily unavailable (spend cap / rate limit / overload). Generation
+    // runs before the credit charge, so nothing was billed — surface a clean 503
+    // the UI can retry, not a raw 500.
+    if (isAIUnavailableError(err)) {
+      console.warn(
+        '[meetings/documents] AI unavailable:',
+        err instanceof Error ? err.message : err,
+      )
+      return NextResponse.json(
+        {
+          error: 'AI is temporarily unavailable. Please try again in a few minutes.',
+          code: 'AI_UNAVAILABLE',
+        },
+        { status: 503 },
+      )
+    }
     const message = err instanceof Error ? err.message : 'Failed to generate document'
     console.error('[meetings/documents]', message)
     return NextResponse.json({ error: message }, { status: 500 })

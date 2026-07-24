@@ -75,6 +75,15 @@ export default function LiveMeetingPage() {
     window.localStorage.setItem(LS_RIGHT, rightOpen ? '1' : '0')
   }, [rightOpen])
 
+  const refetchSegments = useCallback(async () => {
+    const { data } = await supabase
+      .from('transcript_segments')
+      .select('*')
+      .eq('meeting_id', id)
+      .order('created_at')
+    if (data) setSegments(data as TranscriptSegment[])
+  }, [id, supabase])
+
   const fetchInitialData = useCallback(async () => {
     const [meetingRes, segmentsRes] = await Promise.all([
       supabase.from('meetings').select('*').eq('id', id).single(),
@@ -107,11 +116,19 @@ export default function LiveMeetingPage() {
           )
         },
       )
-      .subscribe()
+      .subscribe((status) => {
+        // On every (re)connect, pull the authoritative segment list. The WS can
+        // drop on a brief network blip ("network connection was lost") and the
+        // client silently rejoins — any INSERTs that landed while it was down
+        // would otherwise be missing from the live transcript. Refetching here
+        // closes that gap. The initial SUBSCRIBED just races the mount fetch
+        // harmlessly (both replace with the same DB truth).
+        if (status === 'SUBSCRIBED') void refetchSegments()
+      })
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [id, supabase])
+  }, [id, supabase, refetchSegments])
 
   // Realtime: meeting row updates (status changes)
   useEffect(() => {

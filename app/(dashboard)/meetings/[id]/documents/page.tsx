@@ -8,8 +8,6 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Icon } from '@/components/ui/icon'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ClientMetaCard } from '@/components/documents/ClientMetaCard'
-import { NotesPad } from '@/components/meeting/NotesPad'
 import { AgentWorkingOverlay } from '@/components/documents/AgentWorkingOverlay'
 import { InsufficientCreditsModal } from '@/components/billing/InsufficientCreditsModal'
 import { DOC_TYPE_LABELS, type DocType, type Meeting, type MeetingDocument } from '@/types'
@@ -139,92 +137,32 @@ export default function DocumentsHubPage() {
         {format(new Date(meeting.created_at), 'MMM d, yyyy')}
       </p>
 
-      <div className="grid gap-4" style={{ gridTemplateColumns: '2fr 1fr' }}>
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4">
-            {GENERATORS.map((g) => (
-              <button
-                key={g.type}
-                type="button"
-                disabled={generating !== null}
-                onClick={() => generate(g.type)}
-                className="card text-left"
-                style={{
-                  borderRadius: 14,
-                  padding: '18px 16px',
-                  cursor: generating ? 'default' : 'pointer',
-                  opacity: generating && generating !== g.type ? 0.55 : 1,
-                }}
-              >
-                <div className="mb-2">
-                  <Icon name={g.icon} size={18} />
-                </div>
-                <div className="text-[13.5px] font-semibold" style={{ color: 'var(--ink-1)' }}>
-                  {generating === g.type ? 'Generating…' : DOC_TYPE_LABELS[g.type]}
-                </div>
-                <div className="text-[11.5px] mt-1.5" style={{ color: 'var(--ink-3)' }}>
-                  {g.blurb}
-                </div>
-              </button>
-            ))}
-          </div>
-
-          <div className="card overflow-hidden">
-            <div
-              className="text-[13px] font-semibold"
-              style={{ padding: '12px 18px', borderBottom: '0.5px solid var(--line-1)', color: 'var(--ink-1)' }}
-            >
-              Generated documents
+      <div className="grid grid-cols-2 gap-4">
+        {GENERATORS.map((g) => (
+          <button
+            key={g.type}
+            type="button"
+            disabled={generating !== null}
+            onClick={() => generate(g.type)}
+            className="card text-left"
+            style={{
+              borderRadius: 14,
+              padding: '18px 16px',
+              cursor: generating ? 'default' : 'pointer',
+              opacity: generating && generating !== g.type ? 0.55 : 1,
+            }}
+          >
+            <div className="mb-2">
+              <Icon name={g.icon} size={18} />
             </div>
-            {docs.length === 0 ? (
-              <div className="p-6 text-[12px]" style={{ color: 'var(--ink-3)' }}>
-                Nothing yet — pick a document type above to generate the first one.
-              </div>
-            ) : (
-              docs.map((d, i) => (
-                <Link
-                  key={d.id}
-                  href={`/meetings/${id}/documents/${d.id}`}
-                  className="flex items-center gap-3 hover:bg-[rgba(28,24,20,0.025)] transition-colors"
-                  style={{
-                    padding: '12px 18px',
-                    borderBottom: i < docs.length - 1 ? '0.5px solid var(--line-1)' : 'none',
-                  }}
-                >
-                  <Icon name="doc" size={14} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[12.5px] font-medium truncate" style={{ color: 'var(--ink-1)' }}>
-                      {DOC_TYPE_LABELS[d.doc_type]}
-                      {d.title ? ` — ${d.title}` : ''}
-                    </div>
-                    <div className="text-[11px]" style={{ color: 'var(--ink-3)' }}>
-                      {format(new Date(d.created_at), 'MMM d · h:mm a')}
-                      {d.status === 'final' ? ' · Final' : ' · Draft'}
-                      {d.public_slug ? ' · Shared' : ''}
-                    </div>
-                  </div>
-                  <Icon name="chevR" size={12} />
-                </Link>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <ClientMetaCard meeting={meeting} onSaved={fetchData} />
-
-          <div className="card overflow-hidden flex flex-col" style={{ height: 360 }}>
-            <div
-              className="text-[13px] font-semibold shrink-0"
-              style={{ padding: '12px 18px', borderBottom: '0.5px solid var(--line-1)', color: 'var(--ink-1)' }}
-            >
-              Meeting notes
+            <div className="text-[13.5px] font-semibold" style={{ color: 'var(--ink-1)' }}>
+              {generating === g.type ? 'Generating…' : DOC_TYPE_LABELS[g.type]}
             </div>
-            <div className="flex-1 min-h-0">
-              <NotesPad meetingId={id} initialJson={meeting.notes_json} variant="card" />
+            <div className="text-[11.5px] mt-1.5" style={{ color: 'var(--ink-3)' }}>
+              {g.blurb}
             </div>
-          </div>
-        </div>
+          </button>
+        ))}
       </div>
     </div>
   )
