@@ -127,7 +127,7 @@ End meeting → /processing → /documents (hub)
 - `lib/tiptap.ts` — Tiptap JSON → plain text walker
 - `lib/recall.ts` — Recall.ai wrapper (bot path; `meeting_metadata.title` read best-effort)
 - `lib/sidebar.ts` — `getSidebarCounts()` server helper (counts `meeting_documents`; includes `credits` balance for the sidebar pill)
-- `lib/billing/plans.ts` — **credits config, single source of truth**: `DOCUMENT_CREDIT_COST = 97`, `SIGNUP_GRANT = 200` (mirrored in migration 022's trigger), the 4 monthly PLANS ($17/200cr, $67/970cr, $107/1,650cr, $197/3,200cr — priced for ≥45% margin at worst-case COGS) + the $10/100cr top-up PACK. Stripe price ids come from env.
+- `lib/billing/plans.ts` — **credits config, single source of truth**: `DOCUMENT_CREDIT_COST = 97`, `SIGNUP_GRANT = 200` (mirrored in migration 022's trigger), the 4 monthly PLANS ($17/200cr, $67/800cr, $107/1,300cr, $197/2,440cr — ~59–62% margin at worst-case COGS, above the 45% floor) + the $10/100cr top-up PACK. Stripe price ids come from env.
 - `lib/billing/stripe.ts` — Stripe singleton + `getOrCreateStripeCustomer()`
 - `app/api/billing/checkout/route.ts` — Checkout Session (plans = mode:subscription, packs = mode:payment)
 - `app/api/webhooks/stripe/route.ts` — grants credits: packs on `checkout.session.completed` (mode=payment), subscriptions on `invoice.paid` ONLY (never both — avoids first-month double-grant); idempotent per `stripe_event_id`

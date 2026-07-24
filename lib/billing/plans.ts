@@ -2,11 +2,12 @@
  * Billing configuration — the single source of truth for credit economics.
  * Change credit amounts / prices here (plus the matching Stripe prices).
  *
- * Ladder rationale: prices fixed at $17/$67/$107/$197; credits sized so the
- * effective price per document ($8.50 → $5.97) keeps ≥45% gross margin even
- * at the worst-case all-in cost per deal (~$3.24: 30-min bot meeting, high
- * estimate, with refine — see Proposalmaker_Costs.xlsx). Per-credit price
- * declines monotonically so bigger plans are always better value.
+ * Ladder rationale: prices fixed at $17/$67/$107/$197; credits per tier set
+ * by the owner (200/800/1,300/2,440). Effective price per document runs
+ * $8.50 → $7.88, keeping ~59–62% gross margin even at the worst-case all-in
+ * cost per deal (~$3.24: 30-min bot meeting, high estimate, with refine —
+ * see Proposalmaker_Costs.xlsx), comfortably above the 45% floor. Per-credit
+ * price declines monotonically so bigger plans are always better value.
  */
 
 /** Credits consumed by generating one document (any doc_type). */
@@ -48,26 +49,26 @@ export const PLANS: BillingPlan[] = [
     id: 'pro',
     name: 'Pro',
     priceUsd: 67,
-    monthlyCredits: 970,
+    monthlyCredits: 800,
     stripePriceId: process.env.STRIPE_PRICE_PLAN_PRO,
-    blurb: '10 documents a month — for steady deal flow.',
+    blurb: '8 documents a month — for steady deal flow.',
     highlight: true,
   },
   {
     id: 'business',
     name: 'Business',
     priceUsd: 107,
-    monthlyCredits: 1650,
+    monthlyCredits: 1300,
     stripePriceId: process.env.STRIPE_PRICE_PLAN_BUSINESS,
-    blurb: '17 documents a month — for busy consultants.',
+    blurb: '13 documents a month — for busy consultants.',
   },
   {
     id: 'agency',
     name: 'Agency',
     priceUsd: 197,
-    monthlyCredits: 3200,
+    monthlyCredits: 2440,
     stripePriceId: process.env.STRIPE_PRICE_PLAN_AGENCY,
-    blurb: '33 documents a month — for teams closing every week.',
+    blurb: '25 documents a month — for teams closing every week.',
   },
 ]
 
