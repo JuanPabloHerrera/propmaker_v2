@@ -7,6 +7,7 @@ import { Icon, type IconName } from '@/components/ui/icon'
 import { AvatarInitials } from '@/components/ui/avatar-initials'
 import { SidebarSignOut } from '@/components/dashboard/SidebarSignOut'
 import type { SidebarCounts } from '@/lib/sidebar'
+import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 interface NavItem {
@@ -170,7 +171,7 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
             className="mono-num"
             style={{ fontSize: 10.5, color: lowCredits ? '#b45309' : 'var(--ink-3)' }}
           >
-            {counts.credits.toLocaleString()}
+            {formatNumber(counts.credits)}
           </span>
         </Link>
       </div>
@@ -191,6 +192,19 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
         </div>
       </div>
       <div className="px-1 mt-1">
+        <Link
+          href="/support"
+          className={cn(
+            'w-full flex items-center gap-[9px] rounded-[7px] transition-colors hover:bg-[rgba(28,24,20,0.04)]',
+            pathname === '/support' && 'bg-[rgba(28,24,20,0.05)]',
+          )}
+          style={{ padding: '6px 10px', fontSize: 12.5, color: 'var(--ink-2)' }}
+        >
+          <span style={{ color: 'var(--ink-3)' }}>
+            <Icon name="help" />
+          </span>
+          Support
+        </Link>
         <SidebarSignOut />
       </div>
     </aside>

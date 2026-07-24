@@ -142,6 +142,13 @@ const PATHS: Record<string, React.ReactNode> = {
     </>
   ),
   close: <path d="M4 4l6 6M10 4l-6 6" />,
+  help: (
+    <>
+      <circle cx="7" cy="7" r="5" />
+      <path d="M5.6 5.6a1.5 1.5 0 112.15 1.4c-.45.25-.75.6-.75 1.1v.15" />
+      <path d="M7 10.4v.01" />
+    </>
+  ),
   bold: <path d="M4.5 2.5h3a2 2 0 010 4h-3zM4.5 6.5h3.5a2.25 2.25 0 010 4.5H4.5zM4.5 2.5v8.5" />,
   italic: <path d="M6 2.5h5M3 11.5h5M8.5 2.5l-3 9" />,
   strike: (
