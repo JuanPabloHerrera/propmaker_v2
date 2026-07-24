@@ -70,7 +70,16 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
       badge: counts.meetings || undefined,
       matcher: (p) => p.startsWith('/meetings/'),
     },
+    {
+      id: 'billing',
+      label: 'Billing',
+      href: '/billing',
+      icon: 'sparkle',
+      matcher: (p) => p.startsWith('/billing'),
+    },
   ]
+
+  const lowCredits = counts.credits < 97
 
   const isActive = (item: NavItem) => {
     if (item.matcher) return item.matcher(pathname)
@@ -135,8 +144,35 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
         </ul>
       </nav>
 
+      {/* Credits pill */}
+      <Link
+        href="/billing"
+        className="mt-auto flex items-center gap-2 rounded-[9px] transition-colors hover:bg-[rgba(28,24,20,0.04)]"
+        style={{
+          margin: '0 4px 6px',
+          padding: '7px 10px',
+          border: '0.5px solid var(--line-1)',
+          background: lowCredits ? 'rgba(217, 119, 6, 0.06)' : 'rgba(255,255,255,0.4)',
+        }}
+      >
+        <span style={{ color: lowCredits ? '#b45309' : 'var(--accent-base)' }}>
+          <Icon name="sparkle" size={13} />
+        </span>
+        <span className="mono-num text-[12px] font-medium" style={{ color: 'var(--ink-1)' }}>
+          {counts.credits.toLocaleString()}
+        </span>
+        <span className="text-[11px]" style={{ color: 'var(--ink-3)' }}>
+          credits
+        </span>
+        {lowCredits && (
+          <span className="ml-auto text-[10px] font-medium" style={{ color: '#b45309' }}>
+            Low
+          </span>
+        )}
+      </Link>
+
       {/* User card */}
-      <div className="mt-auto flex items-center gap-2.5 px-2.5 py-2 rounded-[9px] hover:bg-[rgba(28,24,20,0.04)] transition-colors">
+      <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-[9px] hover:bg-[rgba(28,24,20,0.04)] transition-colors">
         <AvatarInitials initials={user.initials} color="sage" size={26} />
         <div className="flex flex-col min-w-0 flex-1">
           <div className="text-[12.5px] font-medium" style={{ color: 'var(--ink-1)' }}>

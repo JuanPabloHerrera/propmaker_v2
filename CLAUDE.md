@@ -111,6 +111,8 @@ End meeting → /processing → /documents (hub)
 - `reference_proposals` — summary (matching) + **`full_text`** (migration **`018`**, injected for the matched reference; null for legacy uploads — matching falls back to summary).
 - `deck_exports` — `+format ('pptx'|'docx'|'pdf')`, `proposal_id`→`document_id` (migration **`019`**); one row per export job.
 - `proposal_shares` — proposal_id (FK → meeting_documents), recipient_email, sent_at, opened_at, message_body
+- **`user_credits`** (migration **`022`**) — one row per user: `balance` (CHECK ≥ 0), `stripe_customer_id`, `stripe_subscription_id`, `plan_id`, `subscription_status`. Read-only to clients (SELECT-own RLS); ALL writes via SECURITY DEFINER RPCs `spend_credits()` / `grant_credits()` (service role only). Deliberately NOT a column on `user_profiles` — its FOR ALL RLS would make it client-writable. 200 free credits on signup (trigger) + backfill.
+- **`credit_transactions`** (migration **`022`**) — ledger: `type ('grant'|'purchase'|'subscription_grant'|'spend'|'refund')`, signed `amount`, `balance_after`, `stripe_event_id` (unique partial index = webhook idempotency).
 
 ## Key files
 - `lib/claude.ts` — Anthropic SDK; `extractMeetingMetadata` (transcript → title/client/attendees/context/language), `matchReferenceProposal` (most-similar past reference), `generateMeetingMinute`, `generateTranscriptSummary`, `generateProposal` (single-pass, matched-reference + catalog blend), `generateNotesDocument` (notes-only polish), `streamDocumentRefine` (doc-type-aware), `generateSuggestions`, `streamLiveChat`, reference summarizers + `extractReferencePdfText`
@@ -124,7 +126,13 @@ End meeting → /processing → /documents (hub)
 - `app/(dashboard)/meetings/[id]/documents/[docId]/{page,share/page}.tsx` — generalized editor + share (all doc types)
 - `lib/tiptap.ts` — Tiptap JSON → plain text walker
 - `lib/recall.ts` — Recall.ai wrapper (bot path; `meeting_metadata.title` read best-effort)
-- `lib/sidebar.ts` — `getSidebarCounts()` server helper (counts `meeting_documents`)
+- `lib/sidebar.ts` — `getSidebarCounts()` server helper (counts `meeting_documents`; includes `credits` balance for the sidebar pill)
+- `lib/billing/plans.ts` — **credits config, single source of truth**: `DOCUMENT_CREDIT_COST = 97`, `SIGNUP_GRANT = 200` (mirrored in migration 022's trigger), the 4 monthly PLANS ($17/200cr, $67/970cr, $107/1,650cr, $197/3,200cr — priced for ≥45% margin at worst-case COGS) + the $10/100cr top-up PACK. Stripe price ids come from env.
+- `lib/billing/stripe.ts` — Stripe singleton + `getOrCreateStripeCustomer()`
+- `app/api/billing/checkout/route.ts` — Checkout Session (plans = mode:subscription, packs = mode:payment)
+- `app/api/webhooks/stripe/route.ts` — grants credits: packs on `checkout.session.completed` (mode=payment), subscriptions on `invoice.paid` ONLY (never both — avoids first-month double-grant); idempotent per `stripe_event_id`
+- `app/api/credits/route.ts` — GET balance + recent ledger
+- `app/(dashboard)/billing/page.tsx` + `components/billing/` — balance card, pricing, transactions, `InsufficientCreditsModal` (shown on 402 from the documents hub)
 - `lib/supabase/` — browser + server + service clients
 - `proxy.ts` — auth guard
 - `app/globals.css` — design tokens (sage `--accent-base #4d8a6b`, warm canvas, `.glass` recipes, `.doc` typography, chrome utilities)

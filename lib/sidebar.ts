@@ -5,12 +5,13 @@ export interface SidebarCounts {
   products: number
   proposals: number
   references: number
+  credits: number
 }
 
 export async function getSidebarCounts(userId: string): Promise<SidebarCounts> {
   const supabase = await createClient()
 
-  const [meetings, products, proposals, references] = await Promise.all([
+  const [meetings, products, proposals, references, credits] = await Promise.all([
     supabase
       .from('meetings')
       .select('*', { count: 'exact', head: true })
@@ -28,6 +29,11 @@ export async function getSidebarCounts(userId: string): Promise<SidebarCounts> {
       .from('reference_proposals')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId),
+    supabase
+      .from('user_credits')
+      .select('balance')
+      .eq('user_id', userId)
+      .maybeSingle(),
   ])
 
   return {
@@ -35,5 +41,6 @@ export async function getSidebarCounts(userId: string): Promise<SidebarCounts> {
     products: products.count ?? 0,
     proposals: proposals.count ?? 0,
     references: references.count ?? 0,
+    credits: credits.data?.balance ?? 0,
   }
 }

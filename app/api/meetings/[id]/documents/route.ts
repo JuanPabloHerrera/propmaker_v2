@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { DOCUMENT_CREDIT_COST } from '@/lib/billing/plans'
 import { gatherMeetingInputs } from '@/lib/meeting-inputs'
 import {
   generateMeetingMinute,
@@ -51,6 +52,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json(
       { error: 'type must be minute, summary, proposal, or notes' },
       { status: 400 },
+    )
+  }
+
+  // Cheap balance pre-check BEFORE spending LLM tokens. The authoritative,
+  // race-safe check is the atomic spend_credits() call after generation.
+  const { data: creditRow } = await supabase
+    .from('user_credits')
+    .select('balance')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  const balance = creditRow?.balance ?? 0
+  if (balance < DOCUMENT_CREDIT_COST) {
+    return NextResponse.json(
+      {
+        error: 'Not enough credits to generate a document.',
+        code: 'INSUFFICIENT_CREDITS',
+        balance,
+        required: DOCUMENT_CREDIT_COST,
+      },
+      { status: 402 },
     )
   }
 
@@ -147,6 +168,37 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Generation returned no content.' }, { status: 500 })
     }
 
+    // Atomic check-and-decrement AFTER successful generation. If a concurrent
+    // generation drained the balance meanwhile, this fails and the user is
+    // never charged (we just ate one LLM call).
+    const service = createServiceClient()
+    const { data: newBalance, error: spendError } = await service.rpc('spend_credits', {
+      p_user_id: user.id,
+      p_amount: DOCUMENT_CREDIT_COST,
+      p_reason: `document:${type}`,
+      p_ref: null,
+    })
+    if (spendError) {
+      if (spendError.message?.includes('INSUFFICIENT_CREDITS')) {
+        const { data: fresh } = await supabase
+          .from('user_credits')
+          .select('balance')
+          .eq('user_id', user.id)
+          .maybeSingle()
+        return NextResponse.json(
+          {
+            error: 'Not enough credits to generate a document.',
+            code: 'INSUFFICIENT_CREDITS',
+            balance: fresh?.balance ?? 0,
+            required: DOCUMENT_CREDIT_COST,
+          },
+          { status: 402 },
+        )
+      }
+      console.error('[meetings/documents] spend_credits failed:', spendError.message)
+      return NextResponse.json({ error: 'Could not charge credits.' }, { status: 500 })
+    }
+
     const { data, error } = await supabase
       .from('meeting_documents')
       .insert({
@@ -160,9 +212,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       })
       .select('id, doc_type, title, created_at')
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      // Charged but couldn't persist the document — refund.
+      await service.rpc('grant_credits', {
+        p_user_id: user.id,
+        p_amount: DOCUMENT_CREDIT_COST,
+        p_type: 'refund',
+        p_reason: `insert_failed:${type}`,
+      })
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
-    return NextResponse.json(data, { status: 201 })
+    return NextResponse.json({ ...data, credit_balance: newBalance }, { status: 201 })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to generate document'
     console.error('[meetings/documents]', message)

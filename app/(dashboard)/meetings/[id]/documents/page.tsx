@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ClientMetaCard } from '@/components/documents/ClientMetaCard'
 import { NotesPad } from '@/components/meeting/NotesPad'
 import { AgentWorkingOverlay } from '@/components/documents/AgentWorkingOverlay'
+import { InsufficientCreditsModal } from '@/components/billing/InsufficientCreditsModal'
 import { DOC_TYPE_LABELS, type DocType, type Meeting, type MeetingDocument } from '@/types'
 
 type DocRow = Pick<
@@ -49,6 +50,7 @@ export default function DocumentsHubPage() {
   const [meeting, setMeeting] = React.useState<Meeting | null>(null)
   const [docs, setDocs] = React.useState<DocRow[] | null>(null)
   const [generating, setGenerating] = React.useState<DocType | null>(null)
+  const [insufficient, setInsufficient] = React.useState<{ balance: number } | null>(null)
 
   const fetchData = React.useCallback(async () => {
     const [meetingRes, docsRes] = await Promise.all([
@@ -79,6 +81,11 @@ export default function DocumentsHubPage() {
         body: JSON.stringify({ type }),
       })
       const data = await res.json().catch(() => ({}))
+      if (res.status === 402) {
+        setInsufficient({ balance: typeof data.balance === 'number' ? data.balance : 0 })
+        setGenerating(null)
+        return
+      }
       if (!res.ok) throw new Error(data.error ?? 'Generation failed')
       router.push(`/meetings/${id}/documents/${data.id}`)
     } catch (err) {
@@ -106,6 +113,12 @@ export default function DocumentsHubPage() {
         open={generating !== null}
         title={`Generating your ${generating ? DOC_TYPE_LABELS[generating].toLowerCase() : 'document'}…`}
         subtitle="The AI agent is reading the meeting and writing the document — it will open automatically when it's ready."
+      />
+
+      <InsufficientCreditsModal
+        open={insufficient !== null}
+        balance={insufficient?.balance ?? 0}
+        onClose={() => setInsufficient(null)}
       />
 
       <Link
