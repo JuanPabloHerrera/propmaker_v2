@@ -150,32 +150,30 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
         </ul>
       </nav>
 
-      {/* Credits pill */}
-      <Link
-        href="/billing"
-        className="mt-auto flex items-center gap-2 rounded-[9px] transition-colors hover:bg-[rgba(28,24,20,0.04)]"
-        style={{
-          margin: '0 4px 6px',
-          padding: '7px 10px',
-          border: '0.5px solid var(--line-1)',
-          background: lowCredits ? 'rgba(217, 119, 6, 0.06)' : 'rgba(255,255,255,0.4)',
-        }}
-      >
-        <span style={{ color: lowCredits ? '#b45309' : 'var(--accent-base)' }}>
-          <Icon name="sparkle" size={13} />
-        </span>
-        <span className="mono-num text-[12px] font-medium" style={{ color: 'var(--ink-1)' }}>
-          {counts.credits.toLocaleString()}
-        </span>
-        <span className="text-[11px]" style={{ color: 'var(--ink-3)' }}>
-          credits
-        </span>
-        {lowCredits && (
-          <span className="ml-auto text-[10px] font-medium" style={{ color: '#b45309' }}>
-            Low
+      {/* Credits — same shape as a nav item; the wrapper's mt-auto pins it above
+          the user card, and paddingTop guarantees a gap under "Billing" even
+          when the nav fills the sidebar. */}
+      <div className="mt-auto" style={{ paddingTop: 16 }}>
+        <Link
+          href="/billing"
+          className="flex items-center gap-[9px] rounded-[7px] text-[12.5px] transition-colors hover:bg-[rgba(28,24,20,0.04)]"
+          style={{ padding: '6px 10px', color: 'var(--ink-2)' }}
+        >
+          <span
+            className="shrink-0"
+            style={{ color: lowCredits ? '#b45309' : 'var(--accent-base)' }}
+          >
+            <Icon name="sparkle" />
           </span>
-        )}
-      </Link>
+          <span className="flex-1">Credits</span>
+          <span
+            className="mono-num"
+            style={{ fontSize: 10.5, color: lowCredits ? '#b45309' : 'var(--ink-3)' }}
+          >
+            {counts.credits.toLocaleString()}
+          </span>
+        </Link>
+      </div>
 
       {/* User card */}
       <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-[9px] hover:bg-[rgba(28,24,20,0.04)] transition-colors">

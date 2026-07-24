@@ -33,8 +33,11 @@ export function PricingSection({ currentPlanId }: PricingSectionProps) {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <div className="text-[13px] font-semibold mb-2.5" style={{ color: 'var(--ink-1)' }}>
+        <div className="text-[13px] font-semibold" style={{ color: 'var(--ink-1)' }}>
           Monthly plans
+        </div>
+        <div className="text-[11.5px] mb-2.5" style={{ color: 'var(--ink-3)' }}>
+          Credits are granted every month and roll over while your plan is active.
         </div>
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
           {PLANS.map((plan) => {
@@ -95,8 +98,11 @@ export function PricingSection({ currentPlanId }: PricingSectionProps) {
       </div>
 
       <div>
-        <div className="text-[13px] font-semibold mb-2.5" style={{ color: 'var(--ink-1)' }}>
-          One-time top-up
+        <div className="text-[13px] font-semibold" style={{ color: 'var(--ink-1)' }}>
+          One-time packs
+        </div>
+        <div className="text-[11.5px] mb-2.5" style={{ color: 'var(--ink-3)' }}>
+          Same credits, same price — bought once, with nothing recurring.
         </div>
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
           {PACKS.map((pack) => (

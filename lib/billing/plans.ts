@@ -8,6 +8,10 @@
  * cost per deal (~$3.24: 30-min bot meeting, high estimate, with refine —
  * see Proposalmaker_Costs.xlsx), comfortably above the 45% floor. Per-credit
  * price declines monotonically so bigger plans are always better value.
+ *
+ * PACKS mirror PLANS one-for-one — same price, same credits, bought once
+ * instead of monthly. Each pack needs its own Stripe one-time price; the
+ * recurring plan price ids can NOT be reused for mode:'payment' checkouts.
  */
 
 /** Credits consumed by generating one document (any doc_type). */
@@ -28,7 +32,7 @@ export interface BillingPlan {
 }
 
 export interface CreditPack {
-  id: 'pack_100'
+  id: 'pack_starter' | 'pack_pro' | 'pack_business' | 'pack_agency'
   name: string
   priceUsd: number
   credits: number
@@ -74,12 +78,36 @@ export const PLANS: BillingPlan[] = [
 
 export const PACKS: CreditPack[] = [
   {
-    id: 'pack_100',
-    name: 'Top-up pack',
-    priceUsd: 10,
-    credits: 100,
-    stripePriceId: process.env.STRIPE_PRICE_PACK_100,
-    blurb: '100 credits, one-time — enough for one more document.',
+    id: 'pack_starter',
+    name: 'Starter pack',
+    priceUsd: 17,
+    credits: 200,
+    stripePriceId: process.env.STRIPE_PRICE_PACK_STARTER,
+    blurb: '2 documents, no subscription.',
+  },
+  {
+    id: 'pack_pro',
+    name: 'Pro pack',
+    priceUsd: 67,
+    credits: 800,
+    stripePriceId: process.env.STRIPE_PRICE_PACK_PRO,
+    blurb: '8 documents, no subscription.',
+  },
+  {
+    id: 'pack_business',
+    name: 'Business pack',
+    priceUsd: 107,
+    credits: 1300,
+    stripePriceId: process.env.STRIPE_PRICE_PACK_BUSINESS,
+    blurb: '13 documents, no subscription.',
+  },
+  {
+    id: 'pack_agency',
+    name: 'Agency pack',
+    priceUsd: 197,
+    credits: 2440,
+    stripePriceId: process.env.STRIPE_PRICE_PACK_AGENCY,
+    blurb: '25 documents, no subscription.',
   },
 ]
 
