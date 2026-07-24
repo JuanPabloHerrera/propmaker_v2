@@ -12,6 +12,12 @@ export const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
+/** First text block of a message, or '' if none (e.g. a leading thinking block). */
+function textFromMessage(msg: Anthropic.Message): string {
+  const block = msg.content.find((b) => b.type === 'text')
+  return block?.type === 'text' ? block.text : ''
+}
+
 /**
  * True when an Anthropic error means the AI is temporarily unavailable rather
  * than a caller bug — the org hit its spend/usage limit (400 with a usage-limit
@@ -466,11 +472,12 @@ export async function generateMeetingMinute({
   const msg = await anthropic.messages.create({
     model: 'claude-sonnet-5',
     max_tokens: 8192,
+    thinking: { type: 'disabled' },
     system: [{ type: 'text', text: MINUTE_INSTRUCTIONS, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userContent }],
   })
 
-  return msg.content[0]?.type === 'text' ? msg.content[0].text : ''
+  return textFromMessage(msg)
 }
 
 interface TranscriptSummaryInput {
@@ -514,11 +521,12 @@ export async function generateTranscriptSummary({
   const msg = await anthropic.messages.create({
     model: 'claude-sonnet-5',
     max_tokens: 6144,
+    thinking: { type: 'disabled' },
     system: [{ type: 'text', text: SUMMARY_INSTRUCTIONS, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userContent }],
   })
 
-  return msg.content[0]?.type === 'text' ? msg.content[0].text : ''
+  return textFromMessage(msg)
 }
 
 interface NotesDocumentInput {
@@ -561,11 +569,12 @@ export async function generateNotesDocument({
   const msg = await anthropic.messages.create({
     model: 'claude-sonnet-5',
     max_tokens: 6144,
+    thinking: { type: 'disabled' },
     system: [{ type: 'text', text: NOTES_DOC_INSTRUCTIONS, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userContent }],
   })
 
-  return msg.content[0]?.type === 'text' ? msg.content[0].text : ''
+  return textFromMessage(msg)
 }
 
 export interface MatchedReferenceInput {
@@ -680,11 +689,12 @@ Return only the Markdown content — no preamble, no commentary.`
   const msg = await anthropic.messages.create({
     model: 'claude-sonnet-5',
     max_tokens: 12288,
+    thinking: { type: 'disabled' },
     system: buildSystemBlocks(instructions, catalogBlock, undefined),
     messages: [{ role: 'user', content: userContent }],
   })
 
-  return msg.content[0].type === 'text' ? msg.content[0].text : ''
+  return textFromMessage(msg)
 }
 
 export function streamLiveChat(
