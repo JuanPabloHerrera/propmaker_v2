@@ -15,6 +15,11 @@
  * Test vs live is decided purely by which key is exported (sk_test_… vs
  * sk_live_…); the script prints the mode it detected before writing anything.
  *
+ * Each price is USD with a `currency_options[mxn]` amount attached, so Mexican
+ * buyers can be charged in pesos — MXN-only Mexican cards can't be charged in
+ * USD at all, and Adaptive Pricing can't cover it (see the PRICE_MXN note in
+ * plans.ts). currency_options IS mutable, so re-running updates it in place.
+ *
  * Idempotent: products and prices are matched by a stable `lookup_key`
  * (plan_pro, pack_pro, …), so re-running reuses what exists instead of
  * creating duplicates. Prices are immutable in Stripe — if an amount in
@@ -37,6 +42,8 @@ interface PriceSpec {
   productName: string
   productDescription: string
   unitAmount: number
+  /** currency_options[mxn] amount, in centavos. */
+  mxnAmount: number
   credits: number
   recurring: boolean
 }
@@ -49,6 +56,7 @@ const specs: PriceSpec[] = [
     productName: `PropMaker ${plan.name}`,
     productDescription: plan.blurb,
     unitAmount: plan.priceUsd * 100,
+    mxnAmount: plan.priceMxn * 100,
     credits: plan.monthlyCredits,
     recurring: true,
   })),
@@ -62,6 +70,7 @@ const specs: PriceSpec[] = [
       productName: `PropMaker ${pack.name.replace(/ pack$/, '')}`,
       productDescription: pack.blurb,
       unitAmount: pack.priceUsd * 100,
+      mxnAmount: pack.priceMxn * 100,
       credits: pack.credits,
       recurring: false,
     }
@@ -107,7 +116,13 @@ async function main() {
       productByTier.set(spec.tier, productId)
     }
 
-    const found = await stripe.prices.list({ lookup_keys: [spec.lookupKey], limit: 1 })
+    // currency_options is NOT returned unless expanded — without this the
+    // reconcile below sees `undefined` every run and rewrites all 8 prices.
+    const found = await stripe.prices.list({
+      lookup_keys: [spec.lookupKey],
+      limit: 1,
+      expand: ['data.currency_options'],
+    })
     const existingPrice = found.data[0]
 
     if (existingPrice) {
@@ -122,7 +137,20 @@ async function main() {
             `in the dashboard, then re-run.`,
         )
       }
-      console.log(`price    ${spec.lookupKey.padEnd(14)} reuse  ${existingPrice.id}`)
+      // unit_amount is immutable, but currency_options is not — reconcile it so
+      // an existing USD-only price picks up (or corrects) its peso amount.
+      const currentMxn = existingPrice.currency_options?.mxn?.unit_amount
+      if (currentMxn !== spec.mxnAmount) {
+        await stripe.prices.update(existingPrice.id, {
+          currency_options: { mxn: { unit_amount: spec.mxnAmount } },
+        })
+        console.log(
+          `price    ${spec.lookupKey.padEnd(14)} update ${existingPrice.id}  ` +
+            `mxn ${currentMxn ?? 'none'} → ${spec.mxnAmount}`,
+        )
+      } else {
+        console.log(`price    ${spec.lookupKey.padEnd(14)} reuse  ${existingPrice.id}`)
+      }
       results.push({ envVar: spec.envVar, priceId: existingPrice.id, reused: true })
       continue
     }
@@ -131,6 +159,7 @@ async function main() {
       product: productId,
       currency: 'usd',
       unit_amount: spec.unitAmount,
+      currency_options: { mxn: { unit_amount: spec.mxnAmount } },
       lookup_key: spec.lookupKey,
       ...(spec.recurring ? { recurring: { interval: 'month' as const } } : {}),
       metadata: {

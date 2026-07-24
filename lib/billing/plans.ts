@@ -12,6 +12,18 @@
  * PACKS mirror PLANS one-for-one — same price, same credits, bought once
  * instead of monthly. Each pack needs its own Stripe one-time price; the
  * recurring plan price ids can NOT be reused for mode:'payment' checkouts.
+ *
+ * PRICE_MXN — USD stays the base currency of every Stripe price and the unit
+ * all margin math is done in; `priceMxn` is applied as Stripe
+ * currency_options[mxn] so Mexican buyers can be charged in pesos. This is not
+ * a nicety: MXN-only Mexican cards CANNOT be charged in USD at the network
+ * level, and Adaptive Pricing can't help — it requires the price currency to be
+ * a settlement currency, and an MX Stripe account settles only in MXN. Charging
+ * MXN also avoids Stripe's 2% conversion fee on USD charges.
+ *
+ * The peso amounts are FIXED, not FX-linked. They were set at ~17.5 MXN/USD,
+ * each rounded just above USD parity; the peso can weaken to ~17.75 before any
+ * tier drops below its dollar price. Revisit if it moves materially.
  */
 
 /** Credits consumed by generating one document (any doc_type). */
@@ -24,6 +36,8 @@ export interface BillingPlan {
   id: 'starter' | 'pro' | 'business' | 'agency'
   name: string
   priceUsd: number
+  /** See PRICE_MXN note above. Applied as Stripe currency_options[mxn]. */
+  priceMxn: number
   /** Credits granted every billing cycle (roll over while subscribed). */
   monthlyCredits: number
   stripePriceId: string | undefined
@@ -35,6 +49,8 @@ export interface CreditPack {
   id: 'pack_starter' | 'pack_pro' | 'pack_business' | 'pack_agency'
   name: string
   priceUsd: number
+  /** See PRICE_MXN note above. Applied as Stripe currency_options[mxn]. */
+  priceMxn: number
   credits: number
   stripePriceId: string | undefined
   blurb: string
@@ -45,6 +61,7 @@ export const PLANS: BillingPlan[] = [
     id: 'starter',
     name: 'Starter',
     priceUsd: 17,
+    priceMxn: 299,
     monthlyCredits: 200,
     stripePriceId: process.env.STRIPE_PRICE_PLAN_STARTER,
     blurb: '2 documents a month — for the occasional proposal.',
@@ -53,6 +70,7 @@ export const PLANS: BillingPlan[] = [
     id: 'pro',
     name: 'Pro',
     priceUsd: 67,
+    priceMxn: 1199,
     monthlyCredits: 800,
     stripePriceId: process.env.STRIPE_PRICE_PLAN_PRO,
     blurb: '8 documents a month — for steady deal flow.',
@@ -62,6 +80,7 @@ export const PLANS: BillingPlan[] = [
     id: 'business',
     name: 'Business',
     priceUsd: 107,
+    priceMxn: 1899,
     monthlyCredits: 1300,
     stripePriceId: process.env.STRIPE_PRICE_PLAN_BUSINESS,
     blurb: '13 documents a month — for busy consultants.',
@@ -70,6 +89,7 @@ export const PLANS: BillingPlan[] = [
     id: 'agency',
     name: 'Agency',
     priceUsd: 197,
+    priceMxn: 3499,
     monthlyCredits: 2440,
     stripePriceId: process.env.STRIPE_PRICE_PLAN_AGENCY,
     blurb: '25 documents a month — for teams closing every week.',
@@ -81,6 +101,7 @@ export const PACKS: CreditPack[] = [
     id: 'pack_starter',
     name: 'Starter pack',
     priceUsd: 17,
+    priceMxn: 299,
     credits: 200,
     stripePriceId: process.env.STRIPE_PRICE_PACK_STARTER,
     blurb: '2 documents, no subscription.',
@@ -89,6 +110,7 @@ export const PACKS: CreditPack[] = [
     id: 'pack_pro',
     name: 'Pro pack',
     priceUsd: 67,
+    priceMxn: 1199,
     credits: 800,
     stripePriceId: process.env.STRIPE_PRICE_PACK_PRO,
     blurb: '8 documents, no subscription.',
@@ -97,6 +119,7 @@ export const PACKS: CreditPack[] = [
     id: 'pack_business',
     name: 'Business pack',
     priceUsd: 107,
+    priceMxn: 1899,
     credits: 1300,
     stripePriceId: process.env.STRIPE_PRICE_PACK_BUSINESS,
     blurb: '13 documents, no subscription.',
@@ -105,6 +128,7 @@ export const PACKS: CreditPack[] = [
     id: 'pack_agency',
     name: 'Agency pack',
     priceUsd: 197,
+    priceMxn: 3499,
     credits: 2440,
     stripePriceId: process.env.STRIPE_PRICE_PACK_AGENCY,
     blurb: '25 documents, no subscription.',
