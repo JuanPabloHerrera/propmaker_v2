@@ -20,8 +20,12 @@ const TOTAL_MS = STEPS.reduce((sum, s) => sum + s.ms, 0)
 
 // How long to wait for the Recall webhook to deliver the finalized transcript
 // before we actively pull it ourselves and proceed regardless.
-const RECALL_WAIT_TIMEOUT_MS = 150_000 // 2.5 min
+const RECALL_WAIT_TIMEOUT_MS = 150_000 // 2.5 min — hard backstop
 const RECALL_POLL_MS = 3_000
+// Actively pull the transcript on this cadence instead of only at the 150s
+// backstop. transcript.done often lags well past the visual steps for short
+// meetings, so this lets them finish in ~30-60s once the recording finalizes.
+const RECALL_SYNC_POLL_MS = 15_000
 
 export default function ProcessingPage() {
   const { id } = useParams<{ id: string }>()
@@ -74,11 +78,13 @@ export default function ProcessingPage() {
   React.useEffect(() => {
     let cancelled = false
     let pollTimer: ReturnType<typeof setInterval> | null = null
+    let syncPollTimer: ReturnType<typeof setInterval> | null = null
     let timeoutTimer: ReturnType<typeof setTimeout> | null = null
     let channel: ReturnType<typeof supabase.channel> | null = null
 
     const teardown = () => {
       if (pollTimer) clearInterval(pollTimer)
+      if (syncPollTimer) clearInterval(syncPollTimer)
       if (timeoutTimer) clearTimeout(timeoutTimer)
       if (channel) supabase.removeChannel(channel)
     }
@@ -157,22 +163,36 @@ export default function ProcessingPage() {
         }
       }, RECALL_POLL_MS)
 
-      // Timeout: actively pull the transcript via the sync endpoint, then proceed
-      // regardless (with a warning if it's still empty).
-      timeoutTimer = setTimeout(async () => {
-        teardown()
-        if (cancelled) return
+      // Actively pull the transcript via the sync endpoint. getBotTranscript
+      // no-ops (returns 0 segments) until the recording is finalized, so calling
+      // it repeatedly before then is a cheap Recall GET; the first non-empty pull
+      // advances us. This is what lets short meetings finish well before the 150s
+      // backstop below.
+      const attemptSync = async (): Promise<boolean> => {
+        if (cancelled) return false
         try {
           const res = await fetch(`/api/meetings/${id}/sync`, { method: 'POST' })
           const json = await res.json().catch(() => ({}))
-          if (!cancelled && (json?.synced > 0 || (await checkReady()))) {
-            advance(false)
-            return
-          }
+          return !cancelled && (json?.synced > 0 || (await checkReady()))
         } catch {
-          /* fall through to incomplete proceed */
+          return false
         }
-        if (!cancelled) advance(true)
+      }
+
+      syncPollTimer = setInterval(async () => {
+        if (await attemptSync()) {
+          teardown()
+          advance(false)
+        }
+      }, RECALL_SYNC_POLL_MS)
+
+      // Backstop: after the full wait, try one last pull and then proceed
+      // regardless (with a warning if it's still empty).
+      timeoutTimer = setTimeout(async () => {
+        const ok = await attemptSync()
+        teardown()
+        if (cancelled) return
+        advance(ok ? false : true)
       }, RECALL_WAIT_TIMEOUT_MS)
     })()
 

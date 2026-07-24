@@ -77,7 +77,7 @@ export async function createBot(meetingUrl: string, meetingId: string): Promise<
     recording_config: {
       transcript: {
         provider: {
-          recallai_streaming: { language_code: 'auto', mode: 'prioritize_accuracy' },
+          recallai_streaming: { language_code: 'auto', mode: 'prioritize_low_latency' },
         },
       },
       realtime_endpoints: [
