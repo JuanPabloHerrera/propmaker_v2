@@ -65,6 +65,21 @@ export async function POST(request: Request) {
 
       case 'invoice.paid': {
         const invoice = event.data.object
+
+        // Only a genuine new billing period grants credits. Every other
+        // billing_reason still carries a plan price on its line item, so
+        // without this gate they'd all grant a full month:
+        //  - subscription_update: a mid-cycle plan change bills a PRORATED
+        //    amount, but would grant the new plan's full monthly credits
+        //  - manual / one-off invoices raised in the dashboard
+        // Cancellation needs no gate here: cancel_at_period_end means Stripe
+        // never issues a renewal invoice, so invoice.paid simply never fires.
+        const reason = invoice.billing_reason
+        if (reason !== 'subscription_create' && reason !== 'subscription_cycle') {
+          console.warn('[webhooks/stripe] invoice.paid ignored, billing_reason=', reason, invoice.id)
+          break
+        }
+
         const customerId =
           typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id
         if (!customerId) break
