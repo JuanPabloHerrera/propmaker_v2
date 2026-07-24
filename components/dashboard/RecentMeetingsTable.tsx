@@ -1,6 +1,13 @@
 import * as React from 'react'
 import Link from 'next/link'
-import { format } from 'date-fns'
+import {
+  format,
+  isToday,
+  isYesterday,
+  isThisWeek,
+  isThisMonth,
+  isThisYear,
+} from 'date-fns'
 import { Icon } from '@/components/ui/icon'
 import { MeetingStatusMenu } from './MeetingStatusMenu'
 import type { Meeting } from '@/types'
@@ -8,6 +15,35 @@ import type { Meeting } from '@/types'
 interface Props {
   meetings: Meeting[]
 }
+
+/** Relative date-period bucket a meeting falls into, for section grouping. */
+function periodLabel(iso: string): string {
+  const d = new Date(iso)
+  if (isToday(d)) return 'Today'
+  if (isYesterday(d)) return 'Yesterday'
+  if (isThisWeek(d, { weekStartsOn: 1 })) return 'This week'
+  if (isThisMonth(d)) return 'This month'
+  if (isThisYear(d)) return format(d, 'MMMM')
+  return format(d, 'MMMM yyyy')
+}
+
+/**
+ * Bucket meetings into date-period groups. Input is already newest-first and the
+ * buckets are monotonic in time, so grouping by first-seen order yields sections
+ * in chronological (newest → oldest) order without a separate sort.
+ */
+function groupByPeriod(meetings: Meeting[]): { label: string; items: Meeting[] }[] {
+  const groups: { label: string; items: Meeting[] }[] = []
+  for (const m of meetings) {
+    const label = periodLabel(m.created_at)
+    const last = groups[groups.length - 1]
+    if (last && last.label === label) last.items.push(m)
+    else groups.push({ label, items: [m] })
+  }
+  return groups
+}
+
+const GRID = '1.5fr 2fr 1.2fr 1fr 30px'
 
 export function RecentMeetingsTable({ meetings }: Props) {
   if (meetings.length === 0) {
@@ -39,12 +75,14 @@ export function RecentMeetingsTable({ meetings }: Props) {
     )
   }
 
+  const groups = groupByPeriod(meetings)
+
   return (
     <div className="card overflow-hidden">
       <div
         className="grid items-center"
         style={{
-          gridTemplateColumns: '1.5fr 2fr 1.2fr 1fr 30px',
+          gridTemplateColumns: GRID,
           padding: '10px 18px',
           fontSize: 10.5,
           color: 'var(--ink-3)',
@@ -60,53 +98,75 @@ export function RecentMeetingsTable({ meetings }: Props) {
         <div>Status</div>
         <div />
       </div>
-      {meetings.map((m, i) => {
-        const href =
-          m.status === 'completed'
-            ? `/meetings/${m.id}/documents`
-            : `/meetings/${m.id}/live`
-        const attendees = m.attendees?.map((a) => a.name).filter(Boolean).join(', ') ?? ''
-        const when = format(new Date(m.created_at), 'MMM d')
-        return (
-          <Link
-            key={m.id}
-            href={href}
-            className="grid items-center hover:bg-[rgba(28,24,20,0.025)] transition-colors"
+      {groups.map((g, gi) => (
+        <React.Fragment key={g.label}>
+          <div
             style={{
-              gridTemplateColumns: '1.5fr 2fr 1.2fr 1fr 30px',
-              padding: '12px 18px',
-              borderBottom:
-                i < meetings.length - 1 ? '0.5px solid var(--line-1)' : 'none',
+              padding: '7px 18px',
+              fontSize: 10.5,
+              color: 'var(--ink-3)',
+              background: 'rgba(28,24,20,0.015)',
+              borderBottom: '0.5px solid var(--line-1)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              fontFamily: 'var(--font-mono), monospace',
             }}
           >
-            <div className="text-[12.5px] font-medium truncate" style={{ color: 'var(--ink-1)' }}>
-              {m.client_company || '—'}
-            </div>
-            <div className="min-w-0">
-              <div className="text-[12px] truncate" style={{ color: 'var(--ink-2)' }}>
-                {m.title}
-              </div>
-              {attendees && (
+            {g.label}
+          </div>
+          {g.items.map((m, ii) => {
+            const href =
+              m.status === 'completed'
+                ? `/meetings/${m.id}/documents`
+                : `/meetings/${m.id}/live`
+            const attendees =
+              m.attendees?.map((a) => a.name).filter(Boolean).join(', ') ?? ''
+            const when = format(new Date(m.created_at), 'MMM d')
+            const isLast = gi === groups.length - 1 && ii === g.items.length - 1
+            return (
+              <Link
+                key={m.id}
+                href={href}
+                className="grid items-center hover:bg-[rgba(28,24,20,0.025)] transition-colors"
+                style={{
+                  gridTemplateColumns: GRID,
+                  padding: '12px 18px',
+                  borderBottom: isLast ? 'none' : '0.5px solid var(--line-1)',
+                }}
+              >
                 <div
-                  className="text-[11px] truncate"
-                  style={{ color: 'var(--ink-3)', marginTop: 2 }}
+                  className="text-[12.5px] font-medium truncate"
+                  style={{ color: 'var(--ink-1)' }}
                 >
-                  {attendees}
+                  {m.client_company || '—'}
                 </div>
-              )}
-            </div>
-            <div className="text-[12px] flex flex-col" style={{ color: 'var(--ink-2)' }}>
-              <span>{when}</span>
-            </div>
-            <div>
-              <MeetingStatusMenu meetingId={m.id} status={m.deal_status} />
-            </div>
-            <span style={{ color: 'var(--ink-3)' }}>
-              <Icon name="chevR" size={12} />
-            </span>
-          </Link>
-        )
-      })}
+                <div className="min-w-0">
+                  <div className="text-[12px] truncate" style={{ color: 'var(--ink-2)' }}>
+                    {m.title}
+                  </div>
+                  {attendees && (
+                    <div
+                      className="text-[11px] truncate"
+                      style={{ color: 'var(--ink-3)', marginTop: 2 }}
+                    >
+                      {attendees}
+                    </div>
+                  )}
+                </div>
+                <div className="text-[12px] flex flex-col" style={{ color: 'var(--ink-2)' }}>
+                  <span>{when}</span>
+                </div>
+                <div>
+                  <MeetingStatusMenu meetingId={m.id} status={m.deal_status} />
+                </div>
+                <span style={{ color: 'var(--ink-3)' }}>
+                  <Icon name="chevR" size={12} />
+                </span>
+              </Link>
+            )
+          })}
+        </React.Fragment>
+      ))}
     </div>
   )
 }
