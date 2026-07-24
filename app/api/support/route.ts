@@ -7,6 +7,10 @@ const SUPPORT_INBOX = process.env.SUPPORT_EMAIL ?? 'jp@mappli.co'
 const CATEGORIES = ['Bug', 'Billing', 'Feature request', 'Question', 'Other'] as const
 type Category = (typeof CATEGORIES)[number]
 
+/** Tickets one account may open per hour before it looks like abuse. */
+const RATE_LIMIT = 5
+const RATE_WINDOW_MS = 60 * 60 * 1000
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -16,13 +20,16 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * Send a support ticket to the team inbox.
+ * Send a support ticket to the team inbox and record it.
  * Body: { category, subject, message, page? }.
  *
  * Account context (email, user id, plan, balance) is read server-side rather
  * than taken from the request, so a ticket always reflects the real account and
- * can't be spoofed. Resend is called over plain fetch — one endpoint isn't
- * worth a dependency.
+ * can't be spoofed.
+ *
+ * The row is written BEFORE the email is attempted so a provider outage can't
+ * lose a report; `email_sent` then records whether delivery worked. Resend is
+ * called over plain fetch — one endpoint isn't worth a dependency.
  */
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -33,7 +40,7 @@ export async function POST(request: Request) {
   const category = String(body?.category ?? '') as Category
   const subject = String(body?.subject ?? '').trim()
   const message = String(body?.message ?? '').trim()
-  const page = String(body?.page ?? '').trim()
+  const page = String(body?.page ?? '').trim().slice(0, 300)
 
   if (!CATEGORIES.includes(category)) {
     return NextResponse.json({ error: 'Pick a category.' }, { status: 400 })
@@ -45,18 +52,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'That message is too long.' }, { status: 400 })
   }
 
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) {
-    console.error('[support] RESEND_API_KEY is not set')
+  const service = createServiceClient()
+
+  // Rate limit off the tickets table — in-memory counters are useless on
+  // serverless, where consecutive requests may land on different instances.
+  const since = new Date(Date.now() - RATE_WINDOW_MS).toISOString()
+  const { count: recentCount } = await service
+    .from('support_tickets')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .gte('created_at', since)
+
+  if ((recentCount ?? 0) >= RATE_LIMIT) {
     return NextResponse.json(
-      { error: `Support email isn't configured. Please email ${SUPPORT_INBOX} directly.` },
-      { status: 500 },
+      { error: `You've sent several messages recently. Please email ${SUPPORT_INBOX} directly.` },
+      { status: 429 },
     )
   }
 
-  // Account context, read server-side — never trusted from the client.
-  const service = createServiceClient()
-  const { data: credits } = await service
+  // The user's own client is enough here — user_credits is SELECT-own under
+  // RLS — so this stays on least privilege rather than the service role.
+  const { data: credits } = await supabase
     .from('user_credits')
     .select('balance, plan_id, subscription_status')
     .eq('user_id', user.id)
@@ -67,6 +83,41 @@ export async function POST(request: Request) {
     ? `${plan.name} (${credits?.subscription_status ?? 'unknown'})`
     : 'No subscription'
 
+  // Recorded first: a ticket must survive the email provider being down.
+  const { data: ticket, error: insertError } = await service
+    .from('support_tickets')
+    .insert({
+      user_id: user.id,
+      email: user.email ?? null,
+      category,
+      subject,
+      message,
+      page: page || null,
+      plan_id: credits?.plan_id ?? null,
+      balance: credits?.balance ?? null,
+    })
+    .select('id')
+    .single()
+
+  if (insertError) {
+    console.error('[support] could not record ticket:', insertError.message)
+    return NextResponse.json(
+      { error: `Could not send your message. Please email ${SUPPORT_INBOX} directly.` },
+      { status: 500 },
+    )
+  }
+
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    console.error('[support] RESEND_API_KEY is not set — ticket', ticket.id, 'recorded but not emailed')
+    await service
+      .from('support_tickets')
+      .update({ email_error: 'RESEND_API_KEY not set' })
+      .eq('id', ticket.id)
+    // The ticket is safely stored, so this is a success for the user.
+    return NextResponse.json({ ok: true })
+  }
+
   const context: [string, string][] = [
     ['From', user.email ?? '(no email)'],
     ['User id', user.id],
@@ -74,6 +125,7 @@ export async function POST(request: Request) {
     ['Credits', String(credits?.balance ?? 0)],
     ['Category', category],
     ['Page', page || '(not given)'],
+    ['Ticket', ticket.id],
   ]
 
   const html = `
@@ -108,20 +160,25 @@ export async function POST(request: Request) {
     })
 
     if (!res.ok) {
-      const detail = await res.text().catch(() => '')
+      const detail = (await res.text().catch(() => '')).slice(0, 500)
       console.error('[support] resend failed', res.status, detail)
-      return NextResponse.json(
-        { error: `Could not send your message. Please email ${SUPPORT_INBOX} directly.` },
-        { status: 502 },
-      )
+      await service
+        .from('support_tickets')
+        .update({ email_error: `${res.status}: ${detail}` })
+        .eq('id', ticket.id)
+      // Stored but undelivered — still a success from the user's side.
+      return NextResponse.json({ ok: true })
     }
 
+    await service.from('support_tickets').update({ email_sent: true }).eq('id', ticket.id)
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error('[support]', err instanceof Error ? err.message : err)
-    return NextResponse.json(
-      { error: `Could not send your message. Please email ${SUPPORT_INBOX} directly.` },
-      { status: 502 },
-    )
+    const detail = err instanceof Error ? err.message : String(err)
+    console.error('[support]', detail)
+    await service
+      .from('support_tickets')
+      .update({ email_error: detail.slice(0, 500) })
+      .eq('id', ticket.id)
+    return NextResponse.json({ ok: true })
   }
 }

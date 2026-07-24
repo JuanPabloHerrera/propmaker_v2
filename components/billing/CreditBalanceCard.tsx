@@ -1,6 +1,7 @@
 import { format } from 'date-fns'
 import { Icon } from '@/components/ui/icon'
 import { DOCUMENT_CREDIT_COST, planById } from '@/lib/billing/plans'
+import { formatNumber } from '@/lib/format'
 
 interface CreditBalanceCardProps {
   balance: number
@@ -42,7 +43,7 @@ export function CreditBalanceCard({
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2">
           <span className="mono-num text-[26px] font-semibold" style={{ color: 'var(--ink-1)' }}>
-            {balance.toLocaleString()}
+            {formatNumber(balance)}
           </span>
           <span className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
             credits
@@ -62,7 +63,7 @@ export function CreditBalanceCard({
         <div className="text-[11px]" style={{ color: 'var(--ink-3)' }}>
           {plan
             ? subscriptionStatus === 'active'
-              ? `${plan.monthlyCredits.toLocaleString()} credits / month`
+              ? `${formatNumber(plan.monthlyCredits)} credits / month`
               : (subscriptionStatus ?? 'inactive')
             : 'No subscription'}
         </div>

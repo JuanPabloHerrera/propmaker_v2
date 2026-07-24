@@ -6,15 +6,8 @@ import { Icon } from '@/components/ui/icon'
 
 const CATEGORIES = ['Bug', 'Billing', 'Feature request', 'Question', 'Other'] as const
 
-const inputStyle: React.CSSProperties = {
-  padding: '9px 11px',
-  borderRadius: 9,
-  border: '0.5px solid var(--line-1)',
-  background: 'rgba(255,255,255,0.55)',
-  fontSize: 13,
-  color: 'var(--ink-1)',
-  width: '100%',
-}
+/** Where the user was before opening /support — see PMSidebar's Support link. */
+const LAST_PAGE_KEY = 'pm:last-page'
 
 export function SupportForm({ userEmail }: { userEmail: string }) {
   const [category, setCategory] = React.useState<string>('Question')
@@ -35,8 +28,10 @@ export function SupportForm({ userEmail }: { userEmail: string }) {
           category,
           subject,
           message,
-          // Helps place a bug report without asking the user where they were.
-          page: typeof document !== 'undefined' ? document.referrer || '' : '',
+          // Recorded by the sidebar's Support link. document.referrer can't be
+          // used: Next's client-side navigation never updates it, so it stays
+          // empty or points at some external site.
+          page: sessionStorage.getItem(LAST_PAGE_KEY) ?? '',
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -91,15 +86,17 @@ export function SupportForm({ userEmail }: { userEmail: string }) {
 
   return (
     <form onSubmit={submit} className="card flex flex-col gap-3" style={{ borderRadius: 14, padding: '20px 24px' }}>
-      <div className="flex flex-col gap-1.5">
-        <label className="pm-eyebrow" htmlFor="support-category">
-          Topic
-        </label>
-        <div className="flex gap-1.5 flex-wrap">
+      {/* A radio group, not a labelled control — the buttons ARE the input, so
+          this needs a fieldset rather than a <label for> pointing at nothing. */}
+      <fieldset>
+        <legend className="field-label">Topic</legend>
+        <div className="flex gap-1.5 flex-wrap" role="radiogroup" aria-label="Topic">
           {CATEGORIES.map((c) => (
             <button
               key={c}
               type="button"
+              role="radio"
+              aria-checked={category === c}
               onClick={() => setCategory(c)}
               className="rounded-[7px] text-[12px] transition-colors"
               style={{
@@ -112,41 +109,37 @@ export function SupportForm({ userEmail }: { userEmail: string }) {
             </button>
           ))}
         </div>
-      </div>
+      </fieldset>
 
-      <div className="flex flex-col gap-1.5">
-        <label className="pm-eyebrow" htmlFor="support-subject">
-          Subject
-        </label>
+      <label className="block">
+        <span className="field-label">Subject</span>
         <input
-          id="support-subject"
+          className="field"
+          style={{ height: 36, fontSize: 13 }}
           required
           maxLength={200}
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           placeholder="Short summary"
-          style={inputStyle}
         />
-      </div>
+      </label>
 
-      <div className="flex flex-col gap-1.5">
-        <label className="pm-eyebrow" htmlFor="support-message">
-          Message
-        </label>
+      <label className="block">
+        <span className="field-label">Message</span>
         <textarea
-          id="support-message"
+          className="field"
+          style={{ fontSize: 13, resize: 'vertical' }}
           required
           maxLength={5000}
           rows={7}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder="What happened, and what did you expect instead?"
-          style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
         />
-        <div className="text-[11px] text-right" style={{ color: 'var(--ink-3)' }}>
+        <span className="block text-[11px] text-right mt-1" style={{ color: 'var(--ink-3)' }}>
           {message.length}/5000
-        </div>
-      </div>
+        </span>
+      </label>
 
       <div className="flex items-center justify-between gap-3">
         <div className="text-[11.5px]" style={{ color: 'var(--ink-3)' }}>

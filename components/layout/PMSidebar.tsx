@@ -194,6 +194,12 @@ export function PMSidebar({ user, counts }: PMSidebarProps) {
       <div className="px-1 mt-1">
         <Link
           href="/support"
+          // Remember where they came from so a bug report carries the page.
+          // document.referrer can't do this — client-side navigation never
+          // updates it.
+          onClick={() => {
+            if (pathname !== '/support') sessionStorage.setItem('pm:last-page', pathname)
+          }}
           className={cn(
             'w-full flex items-center gap-[9px] rounded-[7px] transition-colors hover:bg-[rgba(28,24,20,0.04)]',
             pathname === '/support' && 'bg-[rgba(28,24,20,0.05)]',

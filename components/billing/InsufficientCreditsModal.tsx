@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Icon } from '@/components/ui/icon'
 import { DOCUMENT_CREDIT_COST } from '@/lib/billing/plans'
+import { formatNumber } from '@/lib/format'
 
 interface InsufficientCreditsModalProps {
   open: boolean
@@ -35,7 +36,7 @@ export function InsufficientCreditsModal({ open, balance, onClose }: Insufficien
           <p className="text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
             Generating a document costs{' '}
             <span className="mono-num font-medium">{DOCUMENT_CREDIT_COST}</span> credits and you
-            have <span className="mono-num font-medium">{balance.toLocaleString()}</span> left.
+            have <span className="mono-num font-medium">{formatNumber(balance)}</span> left.
             Top up or subscribe to keep generating.
           </p>
           <div className="flex gap-2 mt-2 w-full">

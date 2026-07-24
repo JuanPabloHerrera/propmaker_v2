@@ -1,5 +1,6 @@
 import { format } from 'date-fns'
 import type { CreditTransaction, CreditTransactionType } from '@/types'
+import { formatNumber } from '@/lib/format'
 
 const TYPE_LABELS: Record<CreditTransactionType, string> = {
   grant: 'Free credits',
@@ -45,13 +46,13 @@ export function TransactionList({ transactions }: { transactions: CreditTransact
               className="mono-num text-[12.5px] font-medium shrink-0"
               style={{ color: tx.amount < 0 ? 'var(--ink-2)' : 'var(--accent-base)' }}
             >
-              {tx.amount > 0 ? `+${tx.amount.toLocaleString()}` : tx.amount.toLocaleString()}
+              {tx.amount > 0 ? `+${formatNumber(tx.amount)}` : formatNumber(tx.amount)}
             </div>
             <div
               className="mono-num text-[11px] shrink-0"
               style={{ color: 'var(--ink-3)', width: 72, textAlign: 'right' }}
             >
-              = {tx.balance_after.toLocaleString()}
+              = {formatNumber(tx.balance_after)}
             </div>
           </div>
         ))

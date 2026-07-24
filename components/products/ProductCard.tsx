@@ -1,6 +1,7 @@
 import type { Product } from '@/types'
 import { PRICE_UNIT_LABELS } from '@/types'
 import { Icon } from '@/components/ui/icon'
+import { formatNumber } from '@/lib/format'
 
 type ProductTag = 'PACKAGE' | 'ADD-ON' | 'RETAINER'
 
@@ -12,7 +13,7 @@ export function productTag(product: Product): ProductTag {
 
 export function formatPrice(product: Product): string {
   if (product.price_amount == null) return '—'
-  const amount = product.price_amount.toLocaleString()
+  const amount = formatNumber(product.price_amount)
   const unit = product.price_unit === 'month' ? '/mo' : ''
   return `${product.currency} ${amount}${unit}`
 }

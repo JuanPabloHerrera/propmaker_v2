@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { DOCUMENT_CREDIT_COST, PACKS, PLANS, planById } from '@/lib/billing/plans'
+import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 interface PricingSectionProps {
@@ -105,7 +106,7 @@ export function PricingSection({ currentPlanId, canSwitchPlan = false }: Pricing
                   </span>
                 </div>
                 <div className="text-[11.5px] mt-1" style={{ color: 'var(--ink-2)' }}>
-                  <span className="mono-num font-medium">{plan.monthlyCredits.toLocaleString()}</span>{' '}
+                  <span className="mono-num font-medium">{formatNumber(plan.monthlyCredits)}</span>{' '}
                   credits · ~{docs} documents
                 </div>
                 <div className="text-[11px] mt-1.5 flex-1" style={{ color: 'var(--ink-3)' }}>
@@ -163,7 +164,7 @@ export function PricingSection({ currentPlanId, canSwitchPlan = false }: Pricing
                 </span>
               </div>
               <div className="text-[11.5px] mt-1" style={{ color: 'var(--ink-2)' }}>
-                <span className="mono-num font-medium">{pack.credits.toLocaleString()}</span> credits
+                <span className="mono-num font-medium">{formatNumber(pack.credits)}</span> credits
               </div>
               <div className="text-[11px] mt-1.5 flex-1" style={{ color: 'var(--ink-3)' }}>
                 {pack.blurb}
@@ -202,7 +203,7 @@ export function PricingSection({ currentPlanId, canSwitchPlan = false }: Pricing
               are. From your next renewal you&apos;ll be billed{' '}
               <span className="mono-num font-medium">${targetPlan?.priceUsd}</span>/mo and receive{' '}
               <span className="mono-num font-medium">
-                {targetPlan?.monthlyCredits.toLocaleString()}
+                {targetPlan ? formatNumber(targetPlan.monthlyCredits) : ''}
               </span>{' '}
               credits each month.
             </p>

@@ -6,6 +6,7 @@ import { format } from 'date-fns'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { planById } from '@/lib/billing/plans'
+import { formatNumber } from '@/lib/format'
 
 interface SubscriptionCardProps {
   planId: string
@@ -65,7 +66,10 @@ export function SubscriptionCard({
           <div className="text-[12.5px] font-medium" style={{ color: 'var(--ink-1)' }}>
             {plan ? `${plan.name} plan` : 'Subscription'}
           </div>
-          <div className="text-[11.5px]" style={{ color: 'var(--ink-3)' }}>
+          {/* `endsOn` is formatted in the runtime's timezone, so the UTC server and
+              a UTC-6 browser disagree across a midnight boundary. The client value
+              is the one we want, so skip the hydration check on this node only. */}
+          <div className="text-[11.5px]" style={{ color: 'var(--ink-3)' }} suppressHydrationWarning>
             {cancelAtPeriodEnd
               ? endsOn
                 ? `Cancels on ${endsOn}. You keep your credits and can resume before then.`
@@ -117,7 +121,7 @@ export function SubscriptionCard({
             </DialogTitle>
             <p className="text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
               You keep your{' '}
-              <span className="mono-num font-medium">{balance.toLocaleString()}</span> credits
+              <span className="mono-num font-medium">{formatNumber(balance)}</span> credits
               {endsOn ? ` and stay on the plan until ${endsOn}` : ' until the period ends'}. After
               that you won&apos;t be billed again and no new monthly credits are added. You can
               resume any time before then.
